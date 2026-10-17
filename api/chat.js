@@ -17,8 +17,14 @@ module.exports = async (req, res) => {
 
     try {
         const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-        // كنقلبو على النص اللي كيصيفطو التطبيق
-        const prompt = body.prompt || body.message || body.text || body.question || body.chat || "Hello";
+        
+        // كنقلبو على النص فـ أي خانة (message, prompt, meaning, text, إلخ)
+        let prompt = body.message || body.prompt || body.text || body.question || body.meaning || body.content;
+        
+        // إلا ما لقيناش شي خانة، كنحولو الـ body كامل لنص
+        if (!prompt) {
+            prompt = JSON.stringify(body);
+        }
         
         const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
         
@@ -30,13 +36,15 @@ module.exports = async (req, res) => {
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
-        // هنا رجعنا الرد ديال الذكاء الاصطناعي + معلومات وهمية ديال الاشتراك باش التطبيق ما يطيحش
+        // كنرجعو الرد بكل الصيغ الممكنة باش التطبيق يلقى اللي كيقلب عليه
         res.status(200).json({ 
             "ok": true,
             "reply": aiReply, 
             "text": aiReply, 
             "response": aiReply,
             "result": aiReply,
+            "data": aiReply,
+            "message": aiReply,
             "serverTimeMillis": Date.now(),
             "accessUntilMillis": Date.now() + 31536000000, 
             "validUntilMillis": Date.now() + 31536000000,
@@ -46,7 +54,6 @@ module.exports = async (req, res) => {
 
     } catch (error) {
         console.error("Error details:", error.response ? error.response.data : error.message);
-        
         res.status(500).json({ 
             "ok": false,
             "error": "Error", 
