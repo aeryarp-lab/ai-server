@@ -1,10 +1,8 @@
-const axios = require('axios');
-
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'OPTIONS,POST');
-    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+    res.setHeader('Access-Control-Allow-Headers', '*');
 
     if (req.method === 'OPTIONS') {
         res.status(200).end();
@@ -16,35 +14,43 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-        
-        // كنقلبو على النص فـ أي خانة (message, prompt, meaning, text, إلخ)
-        let prompt = body.message || body.prompt || body.text || body.question || body.meaning || body.content;
-        
-        // إلا ما لقيناش شي خانة، كنحولو الـ body كامل لنص
-        if (!prompt) {
-            prompt = JSON.stringify(body);
+        // طباعة البيانات اللي كيصيفطها التطبيق باش نشوفوها فـ اللوغات
+        console.log("Received Body:", req.body);
+
+        let body = req.body;
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body); } catch(e) {}
         }
         
-        const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
+        // كنقلبو على النص فـ أي بلاصة
+        const prompt = body.prompt || body.message || body.text || body.question || body.chat || JSON.stringify(body) || "Hello";
+        
+        const GEMINI_API_KEY = "AQ.Ab8RN6LdiRZv5U8DgmfPYow0ZeV6XMqN00duYeiw_4YjIqyjVw"; 
         
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
-        const response = await axios.post(url, {
-            contents: [{ parts: [{ text: prompt }] }]
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
         });
 
-        const aiReply = response.data.candidates[0].content.parts[0].text;
+        const data = await response.json();
 
-        // كنرجعو الرد بكل الصيغ الممكنة باش التطبيق يلقى اللي كيقلب عليه
+        if (!response.ok) {
+            throw new Error(data.error?.message || "Failed to fetch from Gemini");
+        }
+
+        const aiReply = data.candidates[0].content.parts[0].text;
+
         res.status(200).json({ 
             "ok": true,
             "reply": aiReply, 
             "text": aiReply, 
             "response": aiReply,
             "result": aiReply,
-            "data": aiReply,
-            "message": aiReply,
             "serverTimeMillis": Date.now(),
             "accessUntilMillis": Date.now() + 31536000000, 
             "validUntilMillis": Date.now() + 31536000000,
@@ -53,11 +59,11 @@ module.exports = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error details:", error.response ? error.response.data : error.message);
+        console.error("Error Details:", error.message);
         res.status(500).json({ 
             "ok": false,
             "error": "Error", 
-            "details": error.response ? error.response.data : error.message 
+            "details": error.message 
         });
     }
 };
