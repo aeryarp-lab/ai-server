@@ -21,7 +21,6 @@ module.exports = async (req, res) => {
         
         const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
         
-        // هنا رجعنا المفتاح فـ الرابط، حيت هادي هي الطريقة الرسمية ديال Gemini
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
         const response = await axios.post(url, {
@@ -30,17 +29,19 @@ module.exports = async (req, res) => {
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
+        // هنا زدنا "ok": true باش التطبيق يقبل الرد
         res.status(200).json({ 
+            "ok": true,
             "reply": aiReply, 
             "text": aiReply, 
             "response": aiReply
         });
 
     } catch (error) {
-        // هنا كنطبعو الخطأ الحقيقي اللي كيرجع من Google
         console.error("Error details:", error.response ? error.response.data : error.message);
         
         res.status(500).json({ 
+            "ok": false,
             "error": "Error", 
             "details": error.response ? error.response.data : error.message 
         });
