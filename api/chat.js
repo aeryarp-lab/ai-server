@@ -19,9 +19,12 @@ module.exports = async (req, res) => {
         const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
         const prompt = body.prompt || body.message || body.text || body.question || "Hello";
         
-        const GEMINI_API_KEY = "AQ.Ab8RN6KMgMKWsfY4MKknCE_4859o70FOcDON7PHJFh0Tx8xfXQ"; 
+        const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
         
-        const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`, {
+        // هنا رجعنا المفتاح فـ الرابط، حيت هادي هي الطريقة الرسمية ديال Gemini
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+        const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
         });
 
@@ -30,13 +33,16 @@ module.exports = async (req, res) => {
         res.status(200).json({ 
             "reply": aiReply, 
             "text": aiReply, 
-            "response": aiReply,
-            "data": aiReply,
-            "result": aiReply
+            "response": aiReply
         });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ "error": "Error", "details": error.message });
+        // هنا كنطبعو الخطأ الحقيقي اللي كيرجع من Google
+        console.error("Error details:", error.response ? error.response.data : error.message);
+        
+        res.status(500).json({ 
+            "error": "Error", 
+            "details": error.response ? error.response.data : error.message 
+        });
     }
 };
