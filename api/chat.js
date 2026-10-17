@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
         const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
         
         // هنا رجعنا المفتاح فـ الرابط، حيت هادي هي الطريقة الرسمية ديال Gemini
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash::generateContent?key=${GEMINI_API_KEY}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
