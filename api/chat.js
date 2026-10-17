@@ -17,7 +17,8 @@ module.exports = async (req, res) => {
 
     try {
         const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-        const prompt = body.prompt || body.message || body.text || body.question || "Hello";
+        // كنقلبو على النص اللي كيصيفطو التطبيق
+        const prompt = body.prompt || body.message || body.text || body.question || body.chat || "Hello";
         
         const GEMINI_API_KEY = "AQ.Ab8RN6LS0EOGQ5o5Tqus2OV8TABWGFPjl2yTF9FhK1zGFdwHVA"; 
         
@@ -29,12 +30,18 @@ module.exports = async (req, res) => {
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
-        // هنا زدنا "ok": true باش التطبيق يقبل الرد
+        // هنا رجعنا الرد ديال الذكاء الاصطناعي + معلومات وهمية ديال الاشتراك باش التطبيق ما يطيحش
         res.status(200).json({ 
             "ok": true,
             "reply": aiReply, 
             "text": aiReply, 
-            "response": aiReply
+            "response": aiReply,
+            "result": aiReply,
+            "serverTimeMillis": Date.now(),
+            "accessUntilMillis": Date.now() + 31536000000, 
+            "validUntilMillis": Date.now() + 31536000000,
+            "active": true,
+            "source": "mycam"
         });
 
     } catch (error) {
