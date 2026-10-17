@@ -14,7 +14,6 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // طباعة البيانات اللي كيصيفطها التطبيق باش نشوفوها فـ اللوغات
         console.log("Received Body:", req.body);
 
         let body = req.body;
@@ -22,16 +21,20 @@ module.exports = async (req, res) => {
             try { body = JSON.parse(body); } catch(e) {}
         }
         
-        // كنقلبو على النص فـ أي بلاصة
         const prompt = body.prompt || body.message || body.text || body.question || body.chat || JSON.stringify(body) || "Hello";
         
-        const GEMINI_API_KEY = "AQ.Ab8RN6LdiRZv5U8DgmfPYow0ZeV6XMqN00duYeiw_4YjIqyjVw"; 
+        // هنا حط المفتاح ديالك (اللي كيبدا بـ AQ)
+        const GEMINI_API_KEY = "AQ.Ab8RN6JjGoOVXbyfIVwH7S6uzzpk4P_AuVSoQ9uy9s0_Y-2Jhw"; 
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+        // هنا حيدنا المفتاح من الرابط
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
 
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-goog-api-key': GEMINI_API_KEY // هنا كنصيفطو المفتاح فـ الـ Header
+            },
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }]
             })
