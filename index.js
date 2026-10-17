@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
         const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
         const prompt = body.prompt || body.message || body.text || body.question || "Hello";
         
-        const GEMINI_API_KEY = "المفتاح_ديالك_هنا"; // <--- بدل هادا بالمفتاح ديالك
+        const GEMINI_API_KEY = "AQ.Ab8RN6KMgMKWsfY4MKknCE_4859o70FOcDON7PHJFh0Tx8xfXQ"; // <--- بدل هادا بالمفتاح ديالك
         
         const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`, {
             contents: [{ parts: [{ text: prompt }] }]
