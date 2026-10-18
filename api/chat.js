@@ -26,9 +26,9 @@ module.exports = async (req, res) => {
         // كنقلبو على النص فـ أي بلاصة
         const prompt = body.prompt || body.message || body.text || body.question || body.chat || JSON.stringify(body) || "Hello";
         
-        const GEMINI_API_KEY = "AIzaSyAVDXMFN3ai_tnq1SZaHwNHjgayf-Bohts"; 
+        const GEMINI_API_KEY = "AIzaSyDD6qorgs3165UfvuZDeHNNc46iv4_RPu4"; 
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
 
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
