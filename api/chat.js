@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
         
         const GEMINI_API_KEY = "AIzaSyAVDXMFN3ai_tnq1SZaHwNHjgayf-Bohts"; 
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
 
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
