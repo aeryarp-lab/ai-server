@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
         // كنقلبو على النص فـ أي بلاصة
         const prompt = body.prompt || body.message || body.text || body.question || body.chat || JSON.stringify(body) || "Hello";
         
-        const GEMINI_API_KEY = "AQ.Ab8RN6JjGoOVXbyfIVwH7S6uzzpk4P_AuVSoQ9uy9s0_Y-2Jhw"; 
+        const GEMINI_API_KEY = "AIzaSyAVDXMFN3ai_tnq1SZaHwNHjgayf-Bohts"; 
         
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
 
