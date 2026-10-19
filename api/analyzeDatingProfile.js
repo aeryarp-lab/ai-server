@@ -22,10 +22,10 @@ module.exports = async (req, res) => {
         }
         
         // التطبيق كيصيفط profileText و userCriteria
-        const profileText = body.profileText || "";
-        const userCriteria = body.userCriteria || "";
+        const profileText = body.profileText || "No profile text";
+        const userCriteria = body.userCriteria || "No criteria";
         
-        // نص الـ prompt
+        // صنع الـ Prompt
         const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
         
         const GEMINI_API_KEY = "AIzaSyDD6qorgs3165UfvuZDeHNNc46iv4_RPu4"; 
@@ -42,27 +42,17 @@ module.exports = async (req, res) => {
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
-        // هاد المفاتيح هي اللي كيقراها التطبيق
+        // الرد اللي كيتسنا التطبيق
         res.status(200).json({ 
-            "answer": aiReply,          // <--- هذا مهم بزاف
-            "reply": aiReply, 
-            "text": aiReply, 
-            "response": aiReply,
-            "result": aiReply,
+            "answer": aiReply, 
             "ok": true,
-            "serverTimeMillis": Date.now(),
-            "accessUntilMillis": Date.now() + 31536000000, 
-            "validUntilMillis": Date.now() + 31536000000,
-            "active": true,
-            "source": "mycam"
+            "reply": aiReply,
+            "text": aiReply,
+            "active": true
         });
 
     } catch (error) {
-        console.error("Error Details:", error.response ? error.response.data : error.message);
-        res.status(500).json({ 
-            "ok": false,
-            "error": "Error", 
-            "details": error.response ? error.response.data : error.message 
-        });
+        console.error("Error:", error.message);
+        res.status(500).json({ "ok": false, "answer": "Error: " + error.message });
     }
 };
