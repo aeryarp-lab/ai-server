@@ -26,16 +26,19 @@ module.exports = async (req, res) => {
         
         const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
         
+        // حط المفتاح اللي بدا بـ AQ.Ab8 هنا
         const GEMINI_API_KEY = "AQ.Ab8RN6LAql2RS4Y0QoO3xwepCzG4ahB7kDW9hEcPByy8z21hng"; 
         
-        // هنا صلحنا اسم الموديل
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+        // حيدنا ?key= من الرابط
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent`;
 
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
         }, {
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                // هنا كنديرو التوكن فـ الهيدر
+                'Authorization': `Bearer ${GEMINI_API_KEY}`
             }
         });
 
