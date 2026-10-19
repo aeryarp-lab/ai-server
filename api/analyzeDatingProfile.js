@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
         
         const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
         
-        const GEMINI_API_KEY = "AIzaSyDD6qorgs3165UfvuZDeHNNc46iv4_RPu4"; 
+        const GEMINI_API_KEY = "AIzaSyAVDXMFN3ai_tnq1SZaHwNHjgayf-Bohts"; 
         
         // هنا صلحنا اسم الموديل
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
