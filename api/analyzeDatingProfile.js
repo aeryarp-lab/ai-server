@@ -16,18 +16,19 @@ module.exports = async (req, res) => {
     }
 
     try {
-        console.log("Received Body:", req.body);
-
         let body = req.body;
         if (typeof body === 'string') {
             try { body = JSON.parse(body); } catch(e) {}
         }
         
-        // كنقلبو على النص فـ أي بلاصة
-        const prompt = body.prompt || body.message || body.text || body.question || body.chat || JSON.stringify(body) || "Hello";
+        // التطبيق كيصيفط profileText و userCriteria
+        const profileText = body.profileText || "";
+        const userCriteria = body.userCriteria || "";
+        
+        // نص الـ prompt
+        const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
         
         const GEMINI_API_KEY = "AIzaSyDD6qorgs3165UfvuZDeHNNc46iv4_RPu4"; 
-        
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
 
         const response = await axios.post(url, {
@@ -35,18 +36,20 @@ module.exports = async (req, res) => {
         }, {
             headers: {
                 'Content-Type': 'application/json',
-                'x-goog-api-key': GEMINI_API_KEY // المفتاح هنا
+                'x-goog-api-key': GEMINI_API_KEY
             }
         });
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
+        // هاد المفاتيح هي اللي كيقراها التطبيق
         res.status(200).json({ 
-            "ok": true,
+            "answer": aiReply,          // <--- هذا مهم بزاف
             "reply": aiReply, 
             "text": aiReply, 
             "response": aiReply,
             "result": aiReply,
+            "ok": true,
             "serverTimeMillis": Date.now(),
             "accessUntilMillis": Date.now() + 31536000000, 
             "validUntilMillis": Date.now() + 31536000000,
