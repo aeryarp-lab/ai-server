@@ -21,28 +21,26 @@ module.exports = async (req, res) => {
             try { body = JSON.parse(body); } catch(e) {}
         }
         
-        // التطبيق كيصيفط profileText و userCriteria
         const profileText = body.profileText || "No profile text";
         const userCriteria = body.userCriteria || "No criteria";
         
-        // صنع الـ Prompt
         const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
         
         const GEMINI_API_KEY = "AIzaSyDD6qorgs3165UfvuZDeHNNc46iv4_RPu4"; 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
+        
+        // هنا صلحنا اسم الموديل
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }]
         }, {
             headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': GEMINI_API_KEY
+                'Content-Type': 'application/json'
             }
         });
 
         const aiReply = response.data.candidates[0].content.parts[0].text;
 
-        // الرد اللي كيتسنا التطبيق
         res.status(200).json({ 
             "answer": aiReply, 
             "ok": true,
@@ -52,7 +50,10 @@ module.exports = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error:", error.message);
-        res.status(500).json({ "ok": false, "answer": "Error: " + error.message });
+        console.error("Error:", error.response ? error.response.data : error.message);
+        res.status(500).json({ 
+            "ok": false, 
+            "answer": "Error: " + (error.response ? JSON.stringify(error.response.data) : error.message) 
+        });
     }
 };
