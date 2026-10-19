@@ -25,23 +25,21 @@ module.exports = async (req, res) => {
         const userCriteria = body.userCriteria || "No criteria";
         
         const prompt = `Profile: ${profileText}\nCriteria: ${userCriteria}\nReply in a natural way.`;
-        
-        // حط المفتاح اللي كيبدا بـ AQ.Ab8 هنا
-        const GEMINI_API_KEY = "AQ.Ab8RN6KIHGiP2S-t5sykwhAHr5rk_NsI_eq6BRpSPFlBe0EzdQ"; 
-        
-        // الرابط كيفما بان فـ الصورة
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
 
-        const response = await axios.post(url, {
-            contents: [{ parts: [{ text: prompt }] }]
+        const GROQ_API_KEY = process.env.GROQ_API_KEY; 
+        
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+            model: "llama3-8b-8192",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7
         }, {
             headers: {
-                'Content-Type': 'application/json',
-                'X-goog-api-key': GEMINI_API_KEY // هنا كيتحط المفتاح
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
             }
         });
 
-        const aiReply = response.data.candidates[0].content.parts[0].text;
+        const aiReply = response.data.choices[0].message.content;
 
         res.status(200).json({ 
             "answer": aiReply, 
