@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   try {
     // 1. حالة القفل (Secret)
     if (type === 'secret' && req.method === 'GET') {
-      let status = await kv.get('app_lock_status') || "unlock"; // غير لـ unlock باش يتحل
+      let status = await kv.get('app_lock_status') || "lock"; // غير لـ unlock باش يتحل
       return res.status(200).send(`"${status}"`);
     }
 
