@@ -15,7 +15,7 @@ export default function handler(req, res) {
   if (type === 'secret') {
     // هنا كتحدد واش التطبيق مقفول ولا محلول
     // "lock" = مقفول، "unlock" = محلول
-    return res.status(200).send('"unlock"'); 
+    return res.status(200).send('"lock"'); 
   }
 
   // 2. الكود السري (Key)
