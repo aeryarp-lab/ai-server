@@ -26,7 +26,7 @@ export default function handler(req, res) {
 
   // 3. الرسالة اللي كاتبان فـ القفل (Message)
   if (type === 'message') {
-    return res.status(200).send('"التطبيق مقفول من طرف السيرفر ديالي. دخل الكود باش تفتحو."');
+    return res.status(200).send('"التطبيق مقفول من طرف السيرفر ديالي. دخل الكود باش تuuuuuuuفتحو."');
   }
 
   // 4. الحظر (Ban)
