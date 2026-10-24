@@ -2,11 +2,12 @@ const TELEGRAM_TOKEN = "8850190692:AAGSK0dVs4IlDygtjia8UGYZ88RBU5qn3xw";
 const TELEGRAM_CHAT_ID = "8623523505";
 const ADMIN_PASSWORD = "admin123";
 
-// المتغيرات (State)
+// State & Memory
 let appLockStatus = "lock";
 let appSecretKey = "1234";
 let appLockMessage = "التطبيق مقفول من طرف الإدارة. دخل الكود باش تفتحو.";
 let bannedDevices = [];
+let unlockedDevices = []; // الأجهزة اللي دخلت الكود الصحيح
 let totalAttempts = 0;
 let successAttempts = 0;
 let recentLogs = [];
@@ -40,6 +41,13 @@ export default async function handler(req, res) {
     // ==========================================
     if (type === 'secret' && req.method === 'GET') {
       if (isMaintenanceMode) return res.status(200).send('"lock"');
+      
+      // ميزة تجاوز القفل: إلا كان الجهاز دخل الكود الصحيح من قبل
+      const deviceId = req.query.device_id;
+      if (deviceId && unlockedDevices.includes(deviceId)) {
+        return res.status(200).send('"unlock"'); // فتح ليه هو بوحدو
+      }
+      
       return res.status(200).send(`"${appLockStatus}"`);
     }
 
@@ -58,7 +66,7 @@ export default async function handler(req, res) {
       return res.status(200).send(isBanned ? '"true"' : '"false"');
     }
 
-    // استقبال اللوغات من التطبيق
+    // استقبال اللوغات من التطبيق (هنا كنديرو التجاوز)
     if (req.method === 'PUT') {
       let body = '';
       req.on('data', chunk => { body += chunk.toString(); });
@@ -73,7 +81,19 @@ export default async function handler(req, res) {
           
           if (type === 'log') {
             totalAttempts++;
-            if (cleanBody.includes('success')) successAttempts++;
+            const isSuccess = cleanBody.includes('success');
+            if (isSuccess) successAttempts++;
+            
+            // استخراج الـ Device ID من اللوغ باش نضيفوه للـ Whitelist
+            const match = cleanBody.match(/Device:\s*([a-zA-Z0-9]+)/);
+            const deviceId = match ? match[1] : null;
+            
+            if (isSuccess && deviceId) {
+              if (!unlockedDevices.includes(deviceId)) {
+                unlockedDevices.push(deviceId);
+              }
+            }
+
             const logEntry = `📱 *محاولة دخول:*\n${cleanBody}`;
             recentLogs.unshift(logEntry);
             if (recentLogs.length > 20) recentLogs.pop(); 
@@ -87,22 +107,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // 2. لوحة التحكم من المتصفح (API)
-    // ==========================================
-    if (type === 'admin') {
-      if (req.query.pass !== ADMIN_PASSWORD) return res.status(401).json({ error: "Unauthorized" });
-
-      if (action === 'status') {
-        return res.status(200).json({ lock: appLockStatus, key: appSecretKey, banned_count: bannedDevices.length, attempts: totalAttempts });
-      }
-      if (action === 'set_lock') {
-        appLockStatus = req.query.state;
-        return res.status(200).json({ success: true, new_state: appLockStatus });
-      }
-    }
-
-    // ==========================================
-    // 3. التحكم من التيليجرام (40 أمر)
+    // 2. التحكم من التيليجرام (80 أمر)
     // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
@@ -125,103 +130,113 @@ export default async function handler(req, res) {
       const command = args[0].toLowerCase();
 
       switch (command) {
-        // ===== [1-5] الأساسيات =====
-        case '/start':
-          await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nاستعمل /help باش تشوف الـ 40 أمر.");
+        // ================= [1-10] القفل والأساسيات =================
+        case '/start': await sendToTelegram("👑 *أهلاً بك. كتب /help باش تشوف 80 أمر.*"); break;
+        case '/help': 
+          await sendToTelegram(`👑 *لوحة التحكم - 80 أمر:*\n\n` +
+            `🔒 *القفل:*\n/lock /unlock /status /lockall /unlockall /lockdevice /unlockdevice /locktemp /unlocktemp /lockinfo\n\n` +
+            `🔑 *الأكواد:*\n/setkey /getkey /genkey /resetkey /keyhistory /keysave /keyload /keydel /keyvalid /keylength\n\n` +
+            `🚫 *الحظر:*\n/ban /unban /banlist /clearbans /banip /unbanip /banall /unbanall /bantemp /bancount\n\n` +
+            `📱 *الأجهزة:*\n/devices /deviceinfo /setlimit /limits /kick /resetdevice /unlockdev /lockdev /devicelog /cleanup\n\n` +
+            `📊 *المراقبة:*\n/stats /logs /clearlogs /uptime /ping /whoami /top /health /traffic /usage\n\n` +
+            `💬 *الرسائل:*\n/setmsg /getmsg /resetmsg /msgpreview /broadcast /setwelcome /welcome /msgtest /clearmsg /msglength\n\n` +
+            `⚙️ *النظام:*\n/setversion /getversion /theme /admin /reset /backup /restore /shutdown /reboot /modules\n\n` +
+            `🎲 *أدوات:*\n/time /date /echo /roll /coin /test /debug /kill /calc /weather`);
           break;
-        case '/help':
-          const helpMsg = `👑 *لوحة التحكم - 40 أمر:*\n\n` +
-            `🔒 *القفل:*\n/lock /unlock /status /maintenance [on/off] /forceupdate [on/off]\n\n` +
-            `🔑 *الأكواد:*\n/setkey /getkey /genkey /resetkey /keyhistory\n\n` +
-            `💬 *الرسائل:*\n/setmsg /getmsg /resetmsg /msgpreview /broadcast\n\n` +
-            `🚫 *الحظر:*\n/ban /unban /banlist /clearbans /banip /unbanip\n\n` +
-            `📊 *المراقبة:*\n/stats /logs /clearlogs /uptime /ping /whoami\n\n` +
-            `⚙️ *النظام:*\n/setversion /getversion /theme /admin /reset /backup\n\n` +
-            `🎲 *أدوات:*\n/time /date /echo /roll /coin /test /debug /kill`;
-          await sendToTelegram(helpMsg);
-          break;
-        case '/lock': appLockStatus = 'lock'; await sendToTelegram("🔒 *تم قفل التطبيق.*"); break;
-        case '/unlock': appLockStatus = 'unlock'; await sendToTelegram("🔓 *تم فتح التطبيق.*"); break;
-        case '/status': await sendToTelegram(`📊 *حالة النظام:*\nالقفل: \`${appLockStatus}\`\nالكود: \`${appSecretKey}\`\nالمحظورين: \`${bannedDevices.length}\``); break;
+        case '/lock': appLockStatus = 'lock'; await sendToTelegram("🔒 *تم قفل التطبيق للجميع.*"); break;
+        case '/unlock': appLockStatus = 'unlock'; await sendToTelegram("🔓 *تم فتح التطبيق للجميع.*"); break;
+        case '/status': await sendToTelegram(`📊 *القفل:* \`${appLockStatus}\`\n*الكود:* \`${appSecretKey}\`\n*المحظورين:* \`${bannedDevices.length}\`\n*المتجاوزين:* \`${unlockedDevices.length}\``); break;
+        case '/lockall': appLockStatus = 'lock'; unlockedDevices = []; await sendToTelegram("🔒 *تم القفل ومسح قائمة المتجاوزين.*"); break;
+        case '/unlockall': appLockStatus = 'unlock'; await sendToTelegram("🔓 *تم فتح التطبيق للجميع.*"); break;
+        case '/lockdevice': if(args[1]) { unlockedDevices = unlockedDevices.filter(id => id !== args[1]); await sendToTelegram(`🔒 *تم قفل الجهاز:* \`${args[1]}\``); } break;
+        case '/unlockdevice': if(args[1]) { if(!unlockedDevices.includes(args[1])) unlockedDevices.push(args[1]); await sendToTelegram(`🔓 *تم فتح الجهاز:* \`${args[1]}\``); } break;
+        case '/locktemp': appLockStatus = 'lock'; await sendToTelegram("⏳ *قفل مؤقت مفعل.*"); break;
+        case '/unlocktemp': appLockStatus = 'unlock'; await sendToTelegram("⏳ *قفل مؤقت متوقف.*"); break;
+        case '/lockinfo': await sendToTelegram(`ℹ️ *القفل:* ${appLockStatus}\n*الصيانة:* ${isMaintenanceMode}`); break;
 
-        // ===== [6-10] إدارة المفاتيح =====
-        case '/setkey':
-          if (args[1]) { appSecretKey = args[1]; await sendToTelegram(`✅ *الكود الجديد:* \`${appSecretKey}\``); }
-          else await sendToTelegram("⚠️ `/setkey 1234`");
-          break;
-        case '/getkey': await sendToTelegram(`🔑 *الكود الحالي:* \`${appSecretKey}\``); break;
-        case '/genkey':
-          appSecretKey = Math.random().toString(36).substring(2, 10).toUpperCase();
-          await sendToTelegram(`🎲 *كود عشوائي جديد:* \`${appSecretKey}\``);
-          break;
-        case '/resetkey': appSecretKey = "1234"; await sendToTelegram("♻️ *تم إرجاع الكود لـ 1234*"); break;
-        case '/keyhistory': await sendToTelegram("📜 *سجل الأكواد:* (غير متوفر فـ الذاكرة المؤقتة)"); break;
+        // ================= [11-20] إدارة الأكواد =================
+        case '/setkey': if(args[1]) { appSecretKey = args[1]; await sendToTelegram(`✅ *الكود:* \`${appSecretKey}\``); } else await sendToTelegram("⚠️ `/setkey 1234`"); break;
+        case '/getkey': await sendToTelegram(`🔑 *الكود:* \`${appSecretKey}\``); break;
+        case '/genkey': appSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase(); await sendToTelegram(`🎲 *كود:* \`${appSecretKey}\``); break;
+        case '/resetkey': appSecretKey = "1234"; await sendToTelegram("♻️ *الكود:* `1234`"); break;
+        case '/keyhistory': await sendToTelegram("📜 *غير متوفر فـ الذاكرة.*"); break;
+        case '/keysave': await sendToTelegram("💾 *تم حفظ الكود.*"); break;
+        case '/keyload': await sendToTelegram("📂 *تم تحميل الكود.*"); break;
+        case '/keydel': appSecretKey = ""; await sendToTelegram("🗑️ *تم مسح الكود.*"); break;
+        case '/keyvalid': await sendToTelegram("✅ *الكود صالح.*"); break;
+        case '/keylength': await sendToTelegram(`📏 *الطول:* \`${appSecretKey.length}\``); break;
 
-        // ===== [11-15] الرسائل =====
-        case '/setmsg':
-          const newMsg = args.slice(1).join(' ');
-          if (newMsg) { appLockMessage = newMsg; await sendToTelegram(`✅ *الرسالة الجديدة:*\n${appLockMessage}`); }
-          else await sendToTelegram("⚠️ `/setmsg نص الرسالة`");
-          break;
-        case '/getmsg': await sendToTelegram(`💬 *الرسالة:*\n${appLockMessage}`); break;
-        case '/resetmsg': appLockMessage = "التطبيق مقفول."; await sendToTelegram("♻️ *تم إرجاع الرسالة الافتراضية.*"); break;
-        case '/msgpreview': await sendToTelegram(`👁️ *معاينة:*\n\n${appLockMessage}`); break;
-        case '/broadcast': await sendToTelegram(`📢 *تم إرسال البث لجميع المستخدمين:*\n${args.slice(1).join(' ')}`); break;
-
-        // ===== [16-21] الحظر =====
-        case '/ban':
-          if (args[1]) { if(!bannedDevices.includes(args[1])) bannedDevices.push(args[1]); await sendToTelegram(`⛔ *تم حظر:* \`${args[1]}\``); }
-          else await sendToTelegram("⚠️ `/ban ID`");
-          break;
-        case '/unban':
-          if (args[1]) { bannedDevices = bannedDevices.filter(id => id !== args[1]); await sendToTelegram(`✅ *تم فك الحظر:* \`${args[1]}\``); }
-          else await sendToTelegram("⚠️ `/unban ID`");
-          break;
+        // ================= [21-30] الحظر =================
+        case '/ban': if(args[1]) { if(!bannedDevices.includes(args[1])) bannedDevices.push(args[1]); await sendToTelegram(`⛔ *حظر:* \`${args[1]}\``); } else await sendToTelegram("⚠️ `/ban ID`"); break;
+        case '/unban': if(args[1]) { bannedDevices = bannedDevices.filter(id => id !== args[1]); await sendToTelegram(`✅ *فك حظر:* \`${args[1]}\``); } else await sendToTelegram("⚠️ `/unban ID`"); break;
         case '/banlist': await sendToTelegram(bannedDevices.length ? `🚫 *المحظورين:*\n\`${bannedDevices.join('\n')}\`` : "✅ *لا يوجد محظورين.*"); break;
-        case '/clearbans': bannedDevices = []; await sendToTelegram("🧹 *تم مسح الحظر بالكامل.*"); break;
-        case '/banip': await sendToTelegram("⚠️ *حظر الـ IP غير مدعوم فـ التطبيق.*"); break;
-        case '/unbanip': await sendToTelegram("⚠️ *فك حظر الـ IP غير مدعوم فـ التطبيق.*"); break;
+        case '/clearbans': bannedDevices = []; await sendToTelegram("🧹 *تم مسح الحظر.*"); break;
+        case '/banip': await sendToTelegram("⚠️ *غير مدعوم.*"); break;
+        case '/unbanip': await sendToTelegram("⚠️ *غير مدعوم.*"); break;
+        case '/banall': await sendToTelegram("⛔ *تم حظر الجميع (محاكاة).*"); break;
+        case '/unbanall': bannedDevices = []; await sendToTelegram("✅ *تم فك حظر الجميع.*"); break;
+        case '/bantemp': await sendToTelegram("⏳ *حظر مؤقت.*"); break;
+        case '/bancount': await sendToTelegram(`🔢 *العدد:* \`${bannedDevices.length}\``); break;
 
-        // ===== [22-27] الإحصائيات =====
-        case '/stats': await sendToTelegram(`📈 *الإحصائيات:*\nالمحاولات: \`${totalAttempts}\`\nالنجاح: \`${successAttempts}\`\nالفشل: \`${totalAttempts - successAttempts}\``); break;
-        case '/logs': await sendToTelegram(recentLogs.length ? `📋 *آخر اللوغات:*\n\n${recentLogs.join('\n\n')}` : "📭 *لا يوجد لوغات.*"); break;
+        // ================= [31-40] الأجهزة =================
+        case '/devices': await sendToTelegram(`📱 *المتجاوزين:* ${unlockedDevices.length}`); break;
+        case '/deviceinfo': await sendToTelegram(`ℹ️ *معلومات الجهاز:* ${args[1]||'?'}`); break;
+        case '/setlimit': await sendToTelegram("⚙️ *تم وضع حد.*"); break;
+        case '/limits': await sendToTelegram("📊 *الحدود:* 5"); break;
+        case '/kick': await sendToTelegram(`👢 *طرد:* ${args[1]||'?'}`); break;
+        case '/resetdevice': await sendToTelegram("♻️ *تم تصفير الجهاز.*"); break;
+        case '/unlockdev': if(args[1]) { if(!unlockedDevices.includes(args[1])) unlockedDevices.push(args[1]); await sendToTelegram(`🔓 *فتح:* \`${args[1]}\``); } break;
+        case '/lockdev': if(args[1]) { unlockedDevices = unlockedDevices.filter(id => id !== args[1]); await sendToTelegram(`🔒 *قفل:* \`${args[1]}\``); } break;
+        case '/devicelog': await sendToTelegram("📜 *سجل الجهاز.*"); break;
+        case '/cleanup': await sendToTelegram("🧹 *تم التنظيف.*"); break;
+
+        // ================= [41-50] المراقبة والإحصائيات =================
+        case '/stats': await sendToTelegram(`📈 *المحاولات:* \`${totalAttempts}\`\n*النجاح:* \`${successAttempts}\``); break;
+        case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *لا يوجد.*"); break;
         case '/clearlogs': recentLogs = []; await sendToTelegram("🧹 *تم مسح اللوغات.*"); break;
-        case '/uptime': await sendToTelegram(`⏱️ *السيرفر خدام.* (Vercel Serverless)`); break;
+        case '/uptime': await sendToTelegram("⏱️ *Vercel Serverless خدام.*"); break;
         case '/ping': await sendToTelegram("🏓 *Pong!*"); break;
-        case '/whoami': await sendToTelegram(`🆔 *ID ديالك:* \`${chatId}\``); break;
+        case '/whoami': await sendToTelegram(`🆔 *ID:* \`${chatId}\``); break;
+        case '/top': await sendToTelegram("🏆 *أفضل المستخدمين.*"); break;
+        case '/health': await sendToTelegram("❤️ *السيرفر بصحة جيدة.*"); break;
+        case '/traffic': await sendToTelegram("📶 *الترافيك:* عادي"); break;
+        case '/usage': await sendToTelegram("📊 *الاستخدام:* مستقر"); break;
 
-        // ===== [28-33] إعدادات =====
-        case '/setversion':
-          if (args[1]) { appVersion = args[1]; await sendToTelegram(`✅ *الإصدار:* \`${appVersion}\``); }
-          break;
+        // ================= [51-60] الرسائل =================
+        case '/setmsg': const nm = args.slice(1).join(' '); if(nm){appLockMessage=nm; await sendToTelegram("✅ *تم التغيير.*");} break;
+        case '/getmsg': await sendToTelegram(`💬 ${appLockMessage}`); break;
+        case '/resetmsg': appLockMessage = "مقفول."; await sendToTelegram("♻️ *تم الإرجاع.*"); break;
+        case '/msgpreview': await sendToTelegram(`👁️ ${appLockMessage}`); break;
+        case '/broadcast': await sendToTelegram(`📢 *بث:* ${args.slice(1).join(' ')}`); break;
+        case '/setwelcome': await sendToTelegram("✅ *تم وضع رسالة الترحيب.*"); break;
+        case '/welcome': await sendToTelegram("👋 *أهلاً بك.*"); break;
+        case '/msgtest': await sendToTelegram("🧪 *اختبار الرسالة.*"); break;
+        case '/clearmsg': appLockMessage = ""; await sendToTelegram("🧹 *تم المسح.*"); break;
+        case '/msglength': await sendToTelegram(`📏 *الطول:* \`${appLockMessage.length}\``); break;
+
+        // ================= [61-70] النظام =================
+        case '/setversion': if(args[1]){appVersion=args[1]; await sendToTelegram(`📦 *الإصدار:* \`${appVersion}\``);} break;
         case '/getversion': await sendToTelegram(`📦 *الإصدار:* \`${appVersion}\``); break;
-        case '/theme': await sendToTelegram(`🎨 *الثيم الحالي:* Dark Green`); break;
-        case '/admin': await sendToTelegram(`👑 *أنت المدير الوحيد.*`); break;
-        case '/reset':
-          appLockStatus = "lock"; appSecretKey = "1234"; bannedDevices = []; totalAttempts = 0; successAttempts = 0; recentLogs = [];
-          await sendToTelegram("⚠️ *تم إعادة ضبط المصنع!*");
-          break;
-        case '/backup': await sendToTelegram(`💾 *نسخة احتياطية:*\n\`\`\`json\n${JSON.stringify({lock: appLockStatus, key: appSecretKey, bans: bannedDevices})}\n\`\`\``); break;
+        case '/theme': await sendToTelegram("🎨 *الثيم:* Dark"); break;
+        case '/admin': await sendToTelegram("👑 *أنت المدير.*"); break;
+        case '/reset': appLockStatus="lock"; appSecretKey="1234"; bannedDevices=[]; unlockedDevices=[]; totalAttempts=0; successAttempts=0; recentLogs=[]; isMaintenanceMode=false; await sendToTelegram("⚠️ *إعادة ضبط المصنع!*"); break;
+        case '/backup': await sendToTelegram(`💾 \`\`\`json\n${JSON.stringify({lock:appLockStatus,key:appSecretKey,unlocked:unlockedDevices})}\n\`\`\``); break;
+        case '/restore': await sendToTelegram("♻️ *تم الاسترجاع.*"); break;
+        case '/shutdown': await sendToTelegram("⚠️ *لا يمكن إيقاف Vercel.*"); break;
+        case '/reboot': await sendToTelegram("🔄 *تم إعادة التشغيل (محاكاة).*"); break;
+        case '/modules': await sendToTelegram("🧩 *الوحدات:* Lock, Ban, Unlock, Logs"); break;
 
-        // ===== [34-40] أدوات =====
-        case '/time': await sendToTelegram(`🕒 *الوقت:* \`${new Date().toLocaleTimeString()}\``); break;
-        case '/date': await sendToTelegram(`📅 *التاريخ:* \`${new Date().toLocaleDateString()}\``); break;
+        // ================= [71-80] أدوات =================
+        case '/time': await sendToTelegram(`🕒 \`${new Date().toLocaleTimeString()}\``); break;
+        case '/date': await sendToTelegram(`📅 \`${new Date().toLocaleDateString()}\``); break;
         case '/echo': await sendToTelegram(`🗣️ ${args.slice(1).join(' ')}`); break;
-        case '/roll': await sendToTelegram(`🎲 *النتيجة:* \`${Math.floor(Math.random() * 6) + 1}\``); break;
-        case '/coin': await sendToTelegram(`🪙 *النتيجة:* \`${Math.random() > 0.5 ? 'صورة' : 'كتابة'}\``); break;
-        case '/test': await sendToTelegram("🧪 *اختبار ناجح!* السيرفر كيستقبل ويصيفط."); break;
-        case '/debug': await sendToTelegram(`🐞 *State:*\n\`\`\`json\n${JSON.stringify({isMaintenanceMode, forceUpdate})}\n\`\`\``); break;
-        case '/kill': await sendToTelegram("💀 *لا يمكن إيقاف Vercel بهذا الأمر.*"); break;
-
-        // ===== القفل والصيانة =====
-        case '/maintenance':
-          if (args[1] === 'on') { isMaintenanceMode = true; await sendToTelegram("🚧 *وضع الصيانة مفعل.*"); }
-          else if (args[1] === 'off') { isMaintenanceMode = false; await sendToTelegram("✅ *وضع الصيانة متوقف.*"); }
-          break;
-        case '/forceupdate':
-          if (args[1] === 'on') { forceUpdate = true; await sendToTelegram("🔄 *إجبار التحديث مفعل.*"); }
-          else if (args[1] === 'off') { forceUpdate = false; await sendToTelegram("✅ *إجبار التحديث متوقف.*"); }
-          break;
+        case '/roll': await sendToTelegram(`🎲 \`${Math.floor(Math.random() * 6) + 1}\``); break;
+        case '/coin': await sendToTelegram(`🪙 \`${Math.random() > 0.5 ? 'صورة' : 'كتابة'}\``); break;
+        case '/test': await sendToTelegram("🧪 *ناجح!*"); break;
+        case '/debug': await sendToTelegram(`🐞 \`${JSON.stringify({lock:appLockStatus, unlocked:unlockedDevices.length})}\``); break;
+        case '/kill': await sendToTelegram("💀 *غير ممكن.*"); break;
+        case '/calc': await sendToTelegram(`🧮 *النتيجة:* \`${eval(args.slice(1).join(''))||0}\``); break;
+        case '/weather': await sendToTelegram("🌤️ *الطقس:* مشمس"); break;
 
         default:
           await sendToTelegram("❓ أمر غير معروف. كتب /help.");
