@@ -2,7 +2,7 @@ const TELEGRAM_TOKEN = "8850190692:AAGSK0dVs4IlDygtjia8UGYZ88RBU5qn3xw";
 const TELEGRAM_CHAT_ID = "8623523505";
 const ADMIN_PASSWORD = "admin123";
 
-let appLockStatus = "unlock";
+let appLockStatus = "lock";
 let appSecretKey = "1234";
 let bannedDevices = [];
 
