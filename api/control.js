@@ -1,10 +1,10 @@
 const TELEGRAM_TOKEN = "8841932492:AAGIgK81-Kmo-JVsmJ5-pgKjBDac5dHKnm8";
 const TELEGRAM_CHAT_ID = "8623523505";
-const ADMIN_PASSWORD = "admin123";
+const ADMIN_PASSWORD = "admin1234";
 
 let appLockStatus = "lock";
 let appSecretKey = "1234";
-let appLockMessage = "التطبيق مقفول من طرف الإدارة. دخل الكود باش تفتحو.";
+let appLockMessage = "التطبيق مقفول";
 let bannedDevices = [];
 let remoteCommand = ""; 
 let totalAttempts = 0;
