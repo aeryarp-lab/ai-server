@@ -45,7 +45,6 @@ export default async function handler(req, res) {
     if (type === 'key') return res.status(200).send(`"${appSecretKey}"`);
     if (type === 'message') return res.status(200).send(`"${appLockMessage}"`);
     
-    // فحص الحظر
     if (type === 'banned') {
       if (banAllActive) return res.status(200).send('"true"');
       const deviceId = req.query.device_id;
@@ -115,7 +114,7 @@ export default async function handler(req, res) {
           [{ text: "🔑 الكود", callback_data: "/getkey" }, { text: "📊 الإحصائيات", callback_data: "/stats" }],
           [{ text: "📱 اللوغات", callback_data: "/logs" }, { text: "🚫 المحظورين", callback_data: "/banlist" }],
           [{ text: "🚫 حظر الجميع", callback_data: "/banall" }, { text: "✅ فك حظر الجميع", callback_data: "/unbanall" }],
-          [{ text: "💻 معلومات جهاز", callback_data: "/sysinfo" }]
+          [{ text: "💻 معلومات جهاز", callback_data: "/sysinfo" }, { text: "💀 إغلاق التطبيق", callback_data: "/killapp" }]
         ]
       };
 
@@ -129,7 +128,7 @@ export default async function handler(req, res) {
           await sendToTelegram(`👑 *200+ أمر خدامين:*\n\n` +
             `💻 *معلومات:*\n/sysinfo - معلومات الجهاز (رام، تخزين، دولة)\n\n` +
             `🚫 *حظر:*\n/banall - حظر الجميع\n/unbanall - فك حظر الجميع\n/ban [ID] /unban [ID]\n\n` +
-            `⚡️ *التحكم:*\n/cmd [نص] /url [رابط] /color [#HEX] /clip [نص] /vibrate\n\n` +
+            `⚡️ *التحكم:*\n/cmd [نص] - رسالة\n/url [رابط] - فتح رابط\n/color [#HEX] - تغيير اللون\n/clip [نص] - نسخ نص\n/vibrate - اهتزاز\n/killapp - إغلاق التطبيق فجأة\n\n` +
             `🔒 *القفل:*\n/lock /unlock /lockall /unlockall /lockstatus\n\n` +
             `🔑 *الأكواد:*\n/setkey /getkey /genkey /resetkey\n\n` +
             `📊 *المراقبة:*\n/stats /logs /clearlogs /ping /whoami /health\n\n` +
@@ -156,6 +155,7 @@ export default async function handler(req, res) {
         case '/color': if(args[1]) { remoteCommand = `color:${args[1]}`; await sendToTelegram("🎨 *تم إرسال اللون.*"); } break;
         case '/clip': if(args[1]) { remoteCommand = `clipboard:${args.slice(1).join(' ')}`; await sendToTelegram("📋 *تم إرسال النص للنسخ.*"); } break;
         case '/vibrate': remoteCommand = "vibrate:1"; await sendToTelegram("📳 *تم إرسال الأمر.*"); break;
+        case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 *تم إرسال أمر إغلاق التطبيق.*"); break;
 
         case '/lock': appLockStatus = 'lock'; await sendToTelegram("🔒 *تم القفل.*"); break;
         case '/unlock': appLockStatus = 'unlock'; await sendToTelegram("🔓 *تم الفتح.*"); break;
