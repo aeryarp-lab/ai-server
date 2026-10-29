@@ -36,6 +36,11 @@ export default async function handler(req, res) {
   if (type === 'ai' && req.query.prompt) {
       try {
           const prompt = req.query.prompt;
+          
+          // حماية السيرفر باش ما يطولش بزاف ويقطع الاتصال
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000); 
+
           const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
               method: "POST",
               headers: {
@@ -45,17 +50,20 @@ export default async function handler(req, res) {
               body: JSON.stringify({
                   model: "llama3-8b-8192",
                   messages: [
-                      { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل قصير ومفيد جدا. تجاوب بالدارجة المغربية." },
+                      { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل قصير ومفيد جدا بالدارجة المغربية. تجاوب بجملة أو جوج بحد أقصى." },
                       { role: "user", content: prompt }
                   ],
                   temperature: 0.7
-              })
+              }),
+              signal: controller.signal
           });
+          clearTimeout(timeout);
+          
           const data = await groqRes.json();
           const aiText = data?.choices?.[0]?.message?.content || "سمح ليا، ما فهمتش السؤال.";
-          return res.status(200).send(aiText);
+          return res.status(200).send(aiText.trim());
       } catch (e) {
-          return res.status(500).send("خطأ في الاتصال بالسيرفر.");
+          return res.status(200).send("وقع خطأ فـ الاتصال، عاود جرب.");
       }
   }
 
