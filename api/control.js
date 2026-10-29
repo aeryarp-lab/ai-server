@@ -21,7 +21,6 @@ async function kvCmd(...args) {
 let remoteCommand = "";
 
 export default async function handler(req, res) {
-  // إعدادات CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, apikey, Authorization');
@@ -48,7 +47,7 @@ export default async function handler(req, res) {
                   "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                  model: "llama-3.1-8b-instant", // موديل جديد وأسرع
+                  model: "openai/gpt-oss-20b", // ⚡ الموديل الجديد
                   messages: [
                       { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
@@ -59,7 +58,6 @@ export default async function handler(req, res) {
           
           const data = await groqRes.json();
           
-          // إلا كان خطأ من Groq، غادي يبينو ليك فـ الإشعار
           if (data.error) {
               return res.status(200).send("خطأ: " + data.error.message);
           }
@@ -79,7 +77,6 @@ export default async function handler(req, res) {
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
-      // فحص الحظر
       const isBannedAll = await kvCmd('GET', 'ban_all');
       if (isBannedAll === '1') {
           return res.status(200).json({ valid: false, message: "All devices are banned by admin.", expires_at: 0, signature: "" });
@@ -100,8 +97,6 @@ export default async function handler(req, res) {
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
-          
-          // فحص واش الكود ديجا تفعل من قبل (مرة وحدة)
           if (isUsed === '1') {
               await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
@@ -120,10 +115,9 @@ export default async function handler(req, res) {
               });
           }
 
-          // أول مرة كيتخدم الكود: كنحسبو الوقت وكنحرقوه
           let expiresAt = Date.now() + (durationMinutes * 60 * 1000);
           await kvCmd('SET', 'active_expiry', expiresAt.toString());
-          await kvCmd('SET', 'is_used', '1'); // حرقت الكود
+          await kvCmd('SET', 'is_used', '1'); 
 
           return res.status(200).json({
               valid: true,
@@ -132,7 +126,6 @@ export default async function handler(req, res) {
               signature: "" 
           });
       } else {
-          // محاولة فاشلة (كود غالط)
           await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ 
@@ -150,7 +143,6 @@ export default async function handler(req, res) {
           });
       }
   }
-  // ==========================================
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
@@ -162,18 +154,12 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ==========================================
-    // ⚡ 3. استقبال الأوامر من التطبيق (Server Poll) ⚡
-    // ==========================================
     if (type === 'command') {
       const cmd = remoteCommand;
       remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
     }
 
-    // ==========================================
-    // ⚡ 4. التحكم من تيليجرام (Webhook) ⚡
-    // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
@@ -203,7 +189,6 @@ export default async function handler(req, res) {
             `/cmd [msg] /url [link] /killapp`); 
           break;
         
-        // ⚡ توليد كود عام (مرة وحدة) ⚡
         case '/setkey':
           if(args[1]) { 
             const key = args[1];
@@ -219,7 +204,6 @@ export default async function handler(req, res) {
           }
           break;
 
-        // ⚡ توليد كود لجهاز واحد (مرة وحدة) ⚡
         case '/genkey':
           if(args[1] && args[2]) {
             const deviceId = args[1];
