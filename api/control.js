@@ -39,7 +39,7 @@ export default async function handler(req, res) {
               method: "POST",
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
-                  model: "llama-3.1-8b-instant", 
+                  model: "llama3-8b-8192", // ⚡ الموديل الصحيح
                   messages: [
                       { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
@@ -102,19 +102,14 @@ export default async function handler(req, res) {
       }
   }
 
-  // ⚡ 3. دالة إرسال الرسائل لتيليجرام ⚡
   const sendToTelegram = async (text, chatId, keyboard = null) => {
-    try {
+    if (TELEGRAM_TOKEN && chatId) {
       const payload = { chat_id: chatId, text: text, parse_mode: 'HTML' };
       if (keyboard) payload.reply_markup = keyboard;
-      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(payload)
-      });
-      const data = await response.json();
-      if (!data.ok) console.error("Telegram Error:", data); // كيسجل الخطأ فـ Vercel Logs
-    } catch (err) {
-      console.error("Fetch Error:", err);
+      }).catch(() => {});
     }
   };
 
@@ -129,16 +124,17 @@ export default async function handler(req, res) {
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
-      if (!body || (!body.message && !body.callback_query)) return res.status(200).end(); 
-
       const msg = body.message || body.callback_query;
+      if (!msg) return res.status(200).end();
+      
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
       // 1. زر HUD (غير للأدمن)
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
-          if (body.callback_query.data === 'hud') {
+          const data = body.callback_query.data;
+          if (data === 'hud') {
               remoteCommand = "hud_on:1"; 
               await sendToTelegram("✅ تم إرسال الأمر للتطبيق: تشغيل HUD 🚀", chatId);
           }
@@ -149,18 +145,41 @@ export default async function handler(req, res) {
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/);
           const command = args[0].toLowerCase();
+
           switch (command) {
             case '/start': case '/menu': 
-              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
+              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, {
+                  inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]]
+              }); 
               return res.status(200).end();
             case '/help': 
-              await sendToTelegram("👑 <b>لوحة التحكم (للأدمن)</b>\n\n⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp", chatId); 
+              await sendToTelegram("👑 <b>لوحة التحكم (للأدمن)</b>\n\n" +
+                "⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n" +
+                "🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n" +
+                "💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp", chatId); 
               return res.status(200).end();
             case '/setkey':
-              if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await kvCmd('SET', 'key_duration', args[2] ? parseInt(args[2]) : 5); await kvCmd('SET', 'is_used', '0'); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'allowed_device'); await kvCmd('DEL', 'used_device_id'); await sendToTelegram(`✅ <b>كود جديد:</b> <code>${args[1]}</code>`, chatId); }
+              if(args[1]) { 
+                await kvCmd('SET', 'app_secret_key', args[1]); 
+                await kvCmd('SET', 'key_duration', args[2] ? parseInt(args[2]) : 5);
+                await kvCmd('SET', 'is_used', '0'); 
+                await kvCmd('DEL', 'active_expiry');
+                await kvCmd('DEL', 'allowed_device');
+                await kvCmd('DEL', 'used_device_id');
+                await sendToTelegram(`✅ <b>كود جديد:</b> <code>${args[1]}</code>`, chatId); 
+              }
               return res.status(200).end();
             case '/genkey':
-              if(args[1] && args[2]) { const newKey = Math.random().toString(36).substring(2, 8).toUpperCase(); await kvCmd('SET', 'app_secret_key', newKey); await kvCmd('SET', 'key_duration', parseInt(args[2])); await kvCmd('SET', 'is_used', '0'); await kvCmd('SET', 'allowed_device', args[1]); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'used_device_id'); await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b> <code>${newKey}</code>\n📱 للجهاز: <code>${args[1]}</code>`, chatId); }
+              if(args[1] && args[2]) {
+                const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+                await kvCmd('SET', 'app_secret_key', newKey);
+                await kvCmd('SET', 'key_duration', parseInt(args[2]));
+                await kvCmd('SET', 'is_used', '0'); 
+                await kvCmd('SET', 'allowed_device', args[1]); 
+                await kvCmd('DEL', 'active_expiry');
+                await kvCmd('DEL', 'used_device_id');
+                await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b> <code>${newKey}</code>\n📱 للجهاز: <code>${args[1]}</code>`, chatId);
+              }
               return res.status(200).end();
             case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`🚫 محظور: ${args[1]}`, chatId); } return res.status(200).end();
             case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ تم إلغاء الحظر: ${args[1]}`, chatId); } return res.status(200).end();
@@ -184,7 +203,7 @@ export default async function handler(req, res) {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
-                      model: "llama-3.1-8b-instant",
+                      model: "llama3-8b-8192", // ⚡ هنا تاني بدلنا الموديل
                       messages: [
                           { role: "system", content: "أنت مساعد ذكي بالدارجة المغربية. تجاوب بشكل مفيد وودود." },
                           { role: "user", content: text }
@@ -209,7 +228,6 @@ export default async function handler(req, res) {
     }
     return res.status(404).send('"Not Found"');
   } catch (error) {
-    console.error(error); // كيسجل الخطأ فـ Vercel
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
