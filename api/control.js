@@ -39,7 +39,7 @@ export default async function handler(req, res) {
               method: "POST",
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
-                  model: "llama3-8b-8192", // ⚡ الموديل الصحيح
+                  model: "llama-3.3-70b-versatile", // ⚡ الموديل الجديد
                   messages: [
                       { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
@@ -203,7 +203,7 @@ export default async function handler(req, res) {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
-                      model: "llama3-8b-8192", // ⚡ هنا تاني بدلنا الموديل
+                      model: "llama-3.3-70b-versatile", // ⚡ الموديل الجديد هنا تاني
                       messages: [
                           { role: "system", content: "أنت مساعد ذكي بالدارجة المغربية. تجاوب بشكل مفيد وودود." },
                           { role: "user", content: text }
