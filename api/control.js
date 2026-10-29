@@ -37,9 +37,9 @@ export default async function handler(req, res) {
       try {
           const prompt = req.query.prompt;
           
-          // حماية السيرفر باش ما يطولش بزاف ويقطع الاتصال
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10000); 
+          if (!prompt || prompt.trim() === "") {
+              return res.status(200).send("السؤال خاوي، ماسمعتش والو.");
+          }
 
           const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
               method: "POST",
@@ -48,22 +48,27 @@ export default async function handler(req, res) {
                   "Content-Type": "application/json"
               },
               body: JSON.stringify({
-                  model: "llama3-8b-8192",
+                  model: "llama-3.1-8b-instant", // موديل جديد وأسرع
                   messages: [
-                      { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل قصير ومفيد جدا بالدارجة المغربية. تجاوب بجملة أو جوج بحد أقصى." },
+                      { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
                   ],
                   temperature: 0.7
-              }),
-              signal: controller.signal
+              })
           });
-          clearTimeout(timeout);
           
           const data = await groqRes.json();
-          const aiText = data?.choices?.[0]?.message?.content || "سمح ليا، ما فهمتش السؤال.";
+          
+          // إلا كان خطأ من Groq، غادي يبينو ليك فـ الإشعار
+          if (data.error) {
+              return res.status(200).send("خطأ: " + data.error.message);
+          }
+
+          const aiText = data?.choices?.[0]?.message?.content || "ماكانش جواب.";
           return res.status(200).send(aiText.trim());
+          
       } catch (e) {
-          return res.status(200).send("وقع خطأ فـ الاتصال، عاود جرب.");
+          return res.status(200).send("خطأ فـ الاتصال: " + e.message);
       }
   }
 
