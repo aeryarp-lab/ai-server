@@ -136,11 +136,10 @@ export default async function handler(req, res) {
       const msg = body.message || body.callback_query;
       if (!msg) return res.status(200).end();
       
-      // ⚡ جلب ID ديال الشخص اللي صيفط الرسالة ⚡
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
-      // ⚡ 1. معالجة زر "Show Floating HUD" (غير للأدمن) ⚡
+      // 1. معالجة زر "Show Floating HUD" (غير للأدمن)
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
           const data = body.callback_query.data;
@@ -151,9 +150,109 @@ export default async function handler(req, res) {
           return res.status(200).end();
       }
 
-      // ⚡ 2. إلا كانت رسالة عادية (ماشي أمر)، الذكاء الاصطناعي كيرد على أي واحد ⚡
-      if (!text.startsWith('/')) {
+      // 2. إلا كان المستخدم هو الأدمن و صيفط أمر (كيبدا بـ /)
+      if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
+          const args = text.trim().split(/\s+/);
+          const command = args[0].toLowerCase();
+
+          switch (command) {
+            case '/start': case '/menu': 
+              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, {
+                  inline_keyboard: [
+                      [{ text: "🚀 Show Floating HUD", callback_data: "hud" }]
+                  ]
+              }); 
+              return res.status(200).end();
+            
+            case '/help': 
+              await sendToTelegram(`👑 <b>لوحة التحكم (للأدمن)</b>\n\n` +
+                `⚡ <b>التفعيل:</b>\n` +
+                `/setkey [KEY] [MIN] - كود عام\n` +
+                `/genkey [DEVICE_ID] [MIN] - كود مخصص\n\n` +
+                `🚫 <b>الحظر:</b>\n` +
+                `/ban [DEVICE_ID] /unban [DEVICE_ID]\n` +
+                `/banall /unbanall\n\n` +
+                `💀 <b>التحكم:</b>\n` +
+                `/cmd [msg] /url [link] /killapp\n\n` +
+                `🤖 <b>ملاحظة:</b> أي واحد آخر يكتب رسالة عادية، البوت غادي يجاوبو بالذكاء الاصطناعي.`, chatId); 
+              return res.status(200).end();
+            
+            case '/setkey':
+              if(args[1]) { 
+                const key = args[1];
+                const minutes = args[2] ? parseInt(args[2]) : 5; 
+                await kvCmd('SET', 'app_secret_key', key); 
+                await kvCmd('SET', 'key_duration', minutes);
+                await kvCmd('SET', 'is_used', '0'); 
+                await kvCmd('DEL', 'active_expiry');
+                await kvCmd('DEL', 'allowed_device');
+                await kvCmd('DEL', 'used_device_id');
+                await sendToTelegram(`✅ <b>كود جديد:</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.`, chatId); 
+              } else {
+                await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
+              }
+              return res.status(200).end();
+
+            case '/genkey':
+              if(args[1] && args[2]) {
+                const deviceId = args[1];
+                const minutes = parseInt(args[2]);
+                const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+                await kvCmd('SET', 'app_secret_key', newKey);
+                await kvCmd('SET', 'key_duration', minutes);
+                await kvCmd('SET', 'is_used', '0'); 
+                await kvCmd('SET', 'allowed_device', deviceId); 
+                await kvCmd('DEL', 'active_expiry');
+                await kvCmd('DEL', 'used_device_id');
+                await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b>\n🔑 الكود: <code>${newKey}</code>\n📱 للجهاز: <code>${deviceId}</code>\n⏳ المدة: ${minutes} دقيقة.`, chatId);
+              } else await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>", chatId);
+              return res.status(200).end();
+
+            case '/ban':
+              if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`🚫 <b>تم حظر الجهاز:</b> <code>${args[1]}</code>`, chatId); } 
+              else await sendToTelegram("⚠️ استعمل: <code>/ban [DEVICE_ID]</code>", chatId);
+              return res.status(200).end();
+
+            case '/unban':
+              if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ <b>تم إلغاء حظر الجهاز:</b> <code>${args[1]}</code>`, chatId); } 
+              else await sendToTelegram("⚠️ استعمل: <code>/unban [DEVICE_ID]</code>", chatId);
+              return res.status(200).end();
+
+            case '/banall':
+              await kvCmd('SET', 'ban_all', '1');
+              await sendToTelegram("🚫 <b>تم حظر جميع الأجهزة من التفعيل!</b>", chatId);
+              return res.status(200).end();
+
+            case '/unbanall':
+              await kvCmd('DEL', 'ban_all');
+              await kvCmd('DEL', 'banned_devices'); 
+              await sendToTelegram("✅ <b>تم إلغاء الحظر على جميع الأجهزة.</b>", chatId);
+              return res.status(200).end();
+
+            case '/cmd': 
+              if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ <code>[MSG]</code> تم الإرسال.", chatId); } 
+              return res.status(200).end();
+            case '/url': 
+              if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 <code>[URL]</code> جاري الفتح...", chatId); } 
+              return res.status(200).end();
+            case '/killapp': 
+              remoteCommand = "killapp:1"; 
+              await sendToTelegram("💀 <code>[SYS]</code> جاري إغلاق التطبيق...", chatId); 
+              return res.status(200).end();
+            case '/ping': 
+              await sendToTelegram("🏓 <code>[PING]</code> Pong!", chatId); 
+              return res.status(200).end();
+          }
+      }
+
+      // 3. أي شخص آخر (ولا الأدمن إلا صيفط رسالة عادية بلا /) -> الذكاء الاصطناعي كيرد
+      if (!text.startsWith('/') || chatId !== TELEGRAM_CHAT_ID) {
           try {
+              if (text.startsWith('/start')) {
+                  await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
+                  return res.status(200).end();
+              }
+
               const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
@@ -171,7 +270,7 @@ export default async function handler(req, res) {
                   await sendToTelegram("⚠️ خطأ: " + data.error.message, chatId);
               } else {
                   const aiText = data?.choices?.[0]?.message?.content || "سمح ليا، مافهمتش.";
-                  await sendToTelegram(aiText.trim(), chatId); // ⚡ كيرد على الشخص اللي سول ⚡
+                  await sendToTelegram(aiText.trim(), chatId);
               }
           } catch (e) {
               await sendToTelegram("⚠️ وقع خطأ فـ الاتصال.", chatId);
@@ -179,105 +278,6 @@ export default async function handler(req, res) {
           return res.status(200).end();
       }
 
-      // ⚡ 3. من هنا لتحت، الأوامر ديال التحكم (خاصة بالأدمن فقط) ⚡
-      if (chatId !== TELEGRAM_CHAT_ID) {
-          await sendToTelegram("⛔ هاد الأوامر خاصة بالأدمن فقط.", chatId);
-          return res.status(200).end();
-      }
-
-      const args = text.trim().split(/\s+/);
-      const command = args[0].toLowerCase();
-
-      switch (command) {
-        case '/start': case '/menu': 
-          await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, {
-              inline_keyboard: [
-                  [{ text: "🚀 Show Floating HUD", callback_data: "hud" }]
-              ]
-          }); 
-          break;
-        
-        case '/help': 
-          await sendToTelegram(`👑 <b>لوحة التحكم (للأدمن)</b>\n\n` +
-            `⚡ <b>التفعيل:</b>\n` +
-            `/setkey [KEY] [MIN] - كود عام\n` +
-            `/genkey [DEVICE_ID] [MIN] - كود مخصص\n\n` +
-            `🚫 <b>الحظر:</b>\n` +
-            `/ban [DEVICE_ID] /unban [DEVICE_ID]\n` +
-            `/banall /unbanall\n\n` +
-            `💀 <b>التحكم:</b>\n` +
-            `/cmd [msg] /url [link] /killapp\n\n` +
-            `🤖 <b>ملاحظة:</b> أي واحد آخر يكتب رسالة عادية (بلا /)، البوت غادي يجاوبو بالذكاء الاصطناعي.`, chatId); 
-          break;
-        
-        case '/setkey':
-          if(args[1]) { 
-            const key = args[1];
-            const minutes = args[2] ? parseInt(args[2]) : 5; 
-            await kvCmd('SET', 'app_secret_key', key); 
-            await kvCmd('SET', 'key_duration', minutes);
-            await kvCmd('SET', 'is_used', '0'); 
-            await kvCmd('DEL', 'active_expiry');
-            await kvCmd('DEL', 'allowed_device');
-            await kvCmd('DEL', 'used_device_id');
-            await sendToTelegram(`✅ <b>كود جديد:</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.`, chatId); 
-          } else {
-            await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
-          }
-          break;
-
-        case '/genkey':
-          if(args[1] && args[2]) {
-            const deviceId = args[1];
-            const minutes = parseInt(args[2]);
-            const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-            
-            await kvCmd('SET', 'app_secret_key', newKey);
-            await kvCmd('SET', 'key_duration', minutes);
-            await kvCmd('SET', 'is_used', '0'); 
-            await kvCmd('SET', 'allowed_device', deviceId); 
-            await kvCmd('DEL', 'active_expiry');
-            await kvCmd('DEL', 'used_device_id');
-            
-            await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b>\n🔑 الكود: <code>${newKey}</code>\n📱 للجهاز: <code>${deviceId}</code>\n⏳ المدة: ${minutes} دقيقة.`, chatId);
-          } else await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>", chatId);
-          break;
-
-        case '/ban':
-          if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`🚫 <b>تم حظر الجهاز:</b> <code>${args[1]}</code>`, chatId); } 
-          else await sendToTelegram("⚠️ استعمل: <code>/ban [DEVICE_ID]</code>", chatId);
-          break;
-
-        case '/unban':
-          if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ <b>تم إلغاء حظر الجهاز:</b> <code>${args[1]}</code>`, chatId); } 
-          else await sendToTelegram("⚠️ استعمل: <code>/unban [DEVICE_ID]</code>", chatId);
-          break;
-
-        case '/banall':
-          await kvCmd('SET', 'ban_all', '1');
-          await sendToTelegram("🚫 <b>تم حظر جميع الأجهزة من التفعيل!</b>", chatId);
-          break;
-
-        case '/unbanall':
-          await kvCmd('DEL', 'ban_all');
-          await kvCmd('DEL', 'banned_devices'); 
-          await sendToTelegram("✅ <b>تم إلغاء الحظر على جميع الأجهزة.</b>", chatId);
-          break;
-
-        case '/cmd': 
-          if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ <code>[MSG]</code> تم الإرسال.", chatId); } 
-          break;
-        case '/url': 
-          if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 <code>[URL]</code> جاري الفتح...", chatId); } 
-          break;
-        case '/killapp': 
-          remoteCommand = "killapp:1"; 
-          await sendToTelegram("💀 <code>[SYS]</code> جاري إغلاق التطبيق...", chatId); 
-          break;
-        case '/ping': 
-          await sendToTelegram("🏓 <code>[PING]</code> Pong!", chatId); 
-          break;
-      }
       return res.status(200).end();
     }
     return res.status(404).send('"Not Found"');
