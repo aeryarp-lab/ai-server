@@ -220,7 +220,7 @@ export default async function handler(req, res) {
           return res.status(200).end();
       }
 
-      // 4. إلا كان شي واحد آخر صيفط /start أو شي أمر
+      // 4. إلا كان شي واحد آخر صيفط /start
       if (text.startsWith('/start')) {
           await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
       }
