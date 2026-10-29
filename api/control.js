@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
-      // فحص واش الجهاز محظور
+      // فحص الحظر
       const isBannedAll = await kvCmd('GET', 'ban_all');
       if (isBannedAll === '1') {
           return res.status(200).json({ valid: false, message: "All devices are banned by admin.", expires_at: 0, signature: "" });
@@ -45,22 +45,39 @@ export default async function handler(req, res) {
 
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
-      let allowedDevice = await kvCmd('GET', 'allowed_device'); 
+      let allowedDevice = await kvCmd('GET', 'allowed_device');
+      let isUsed = await kvCmd('GET', 'is_used'); // ⚡ واش الكود ديجا تخدم ⚡
       
       let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
 
-      // التحقق: واش الكود صحيح؟ وواش الجهاز مسموح ليه؟
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
-          let storedExpiry = await kvCmd('GET', 'active_expiry');
-          let expiresAt = storedExpiry ? parseInt(storedExpiry) : 0;
+          
+          // ⚡ فحص واش الكود ديجا تفعل من قبل ⚡
+          if (isUsed === '1') {
+              await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ 
+                    chat_id: TELEGRAM_CHAT_ID, 
+                    text: `⚠️ *محاولة استعمال كود محروق:*\n\n🔑 *Key:* \`${providedKey}\`\n📱 *Device:* \`${deviceId}\``,
+                    parse_mode: 'Markdown'
+                })
+              }).catch(()=>{});
 
-          if (expiresAt === 0 || Date.now() > expiresAt) {
-              expiresAt = Date.now() + (durationMinutes * 60 * 1000);
-              await kvCmd('SET', 'active_expiry', expiresAt.toString());
+              return res.status(200).json({ 
+                  valid: false, 
+                  message: "This key has already been used. Please request a new one.", 
+                  expires_at: 0, 
+                  signature: "" 
+              });
           }
+
+          // ⚡ أول مرة كيتخدم الكود: كنحسبو الوقت وكنحرقوه ⚡
+          let expiresAt = Date.now() + (durationMinutes * 60 * 1000);
+          await kvCmd('SET', 'active_expiry', expiresAt.toString());
+          await kvCmd('SET', 'is_used', '1'); // حرقت الكود
 
           return res.status(200).json({
               valid: true,
@@ -69,7 +86,7 @@ export default async function handler(req, res) {
               signature: "" 
           });
       } else {
-          // إرسال اللوغ للتيليجرام ملي كتفشل المحاولة
+          // محاولة فاشلة (كود غالط)
           await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ 
@@ -81,7 +98,7 @@ export default async function handler(req, res) {
 
           return res.status(200).json({
               valid: false,
-              message: isDeviceAllowed ? "Invalid license key" : "Key not valid for this device",
+              message: "Invalid license key",
               expires_at: 0,
               signature: ""
           });
@@ -93,7 +110,6 @@ export default async function handler(req, res) {
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
-      // استعملنا HTML باش نتفاداو مشاكل Markdown
       await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' })
@@ -130,37 +146,33 @@ export default async function handler(req, res) {
         
         case '/help': 
           await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
-            `⚡ <b>التفعيل والأجهزة:</b>\n` +
-            `/setkey [KEY] [MIN] - كود عام (لجميع الأجهزة)\n` +
-            `/genkey [DEVICE_ID] [MIN] - كود مخصص لجهاز واحد\n` +
-            `/sysinfo - معلومات عن السيرفر\n\n` +
+            `⚡ <b>التفعيل (مرة وحدة فقط):</b>\n` +
+            `/setkey [KEY] [MIN] - كود عام\n` +
+            `/genkey [DEVICE_ID] [MIN] - كود مخصص لجهاز\n\n` +
             `🚫 <b>الحظر:</b>\n` +
-            `/ban [DEVICE_ID] - حظر جهاز معين\n` +
-            `/unban [DEVICE_ID] - إلغاء حظر جهاز\n` +
-            `/banall - حظر جميع الأجهزة\n` +
-            `/unbanall - إلغاء حظر الكل\n\n` +
+            `/ban [DEVICE_ID] /unban [DEVICE_ID]\n` +
+            `/banall /unbanall\n\n` +
             `💀 <b>التحكم:</b>\n` +
-            `/cmd [msg] - إشعار\n` +
-            `/url [link] - فتح رابط\n` +
-            `/killapp - غلق التطبيق`); 
+            `/cmd [msg] /url [link] /killapp`); 
           break;
         
-        // ⚡ توليد كود عام (بدون ربط بجهاز)
+        // ⚡ توليد كود عام (مرة وحدة) ⚡
         case '/setkey':
           if(args[1]) { 
             const key = args[1];
             const minutes = args[2] ? parseInt(args[2]) : 5; 
             await kvCmd('SET', 'app_secret_key', key); 
             await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_used', '0'); // ⚡ الكود جديد، مازال متخدمش
             await kvCmd('DEL', 'active_expiry');
             await kvCmd('DEL', 'allowed_device');
-            await sendToTelegram(`✅ <b>كود عام جديد:</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.`); 
+            await sendToTelegram(`✅ <b>كود جديد (مرة وحدة):</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.\n⚠️ هذا الكود سيتحرق بمجرد استخدامه!`); 
           } else {
             await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>");
           }
           break;
 
-        // ⚡ توليد كود مربوط بجهاز واحد فقط
+        // ⚡ توليد كود لجهاز واحد (مرة وحدة) ⚡
         case '/genkey':
           if(args[1] && args[2]) {
             const deviceId = args[1];
@@ -169,14 +181,14 @@ export default async function handler(req, res) {
             
             await kvCmd('SET', 'app_secret_key', newKey);
             await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('SET', 'is_used', '0'); // ⚡ الكود جديد
             await kvCmd('SET', 'allowed_device', deviceId); 
             await kvCmd('DEL', 'active_expiry');
             
-            await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b>\n🔑 الكود: <code>${newKey}</code>\n📱 للجهاز: <code>${deviceId}</code>\n⏳ المدة: ${minutes} دقيقة.`);
+            await sendToTelegram(`⏱️ <b>مفتاح مخصص (مرة وحدة):</b>\n🔑 الكود: <code>${newKey}</code>\n📱 للجهاز: <code>${deviceId}</code>\n⏳ المدة: ${minutes} دقيقة.`);
           } else await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>");
           break;
 
-        // ⚡ حظر وإلغاء حظر
         case '/ban':
           if(args[1]) {
             await kvCmd('SADD', 'banned_devices', args[1]);
@@ -202,16 +214,6 @@ export default async function handler(req, res) {
           await sendToTelegram("✅ <b>تم إلغاء الحظر على جميع الأجهزة.</b>");
           break;
 
-        // ⚡ معلومات السيرفر
-        case '/sysinfo':
-          const currentKey = await kvCmd('GET', 'app_secret_key') || 'None';
-          const deviceLock = await kvCmd('GET', 'allowed_device') || 'Global (All)';
-          const expiry = await kvCmd('GET', 'active_expiry');
-          const timeLeft = expiry ? Math.max(0, Math.floor((parseInt(expiry) - Date.now()) / 60000)) + " mins" : "Expired";
-          await sendToTelegram(`💻 <b>معلومات النظام:</b>\n\n🔑 الكود الحالي: <code>${currentKey}</code>\n📱 مربوط بـ: <code>${deviceLock}</code>\n⏳ الوقت المتبقي: <code>${timeLeft}</code>`);
-          break;
-
-        // أوامر التحكم
         case '/cmd': 
           if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ <code>[MSG]</code> تم الإرسال."); } 
           break;
