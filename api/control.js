@@ -1,5 +1,6 @@
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
+const GROQ_API_KEY = "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";
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -20,14 +21,46 @@ async function kvCmd(...args) {
 let remoteCommand = "";
 
 export default async function handler(req, res) {
+  // إعدادات CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, apikey, Authorization');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const type = req.query.type;
+
   // ==========================================
-  // ⚡ 1. التحقق من التفعيل (G vcam) ⚡
+  // ⚡ 1. بلوك الذكاء الاصطناعي (AI Chat) ⚡
+  // ==========================================
+  if (type === 'ai' && req.query.prompt) {
+      try {
+          const prompt = req.query.prompt;
+          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                  "Authorization": `Bearer ${GROQ_API_KEY}`,
+                  "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                  model: "llama3-8b-8192",
+                  messages: [
+                      { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل قصير ومفيد جدا. تجاوب بالدارجة المغربية." },
+                      { role: "user", content: prompt }
+                  ],
+                  temperature: 0.7
+              })
+          });
+          const data = await groqRes.json();
+          const aiText = data?.choices?.[0]?.message?.content || "سمح ليا، ما فهمتش السؤال.";
+          return res.status(200).send(aiText);
+      } catch (e) {
+          return res.status(500).send("خطأ في الاتصال بالسيرفر.");
+      }
+  }
+
+  // ==========================================
+  // ⚡ 2. التحقق من التفعيل (G vcam) ⚡
   // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
@@ -46,7 +79,7 @@ export default async function handler(req, res) {
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
       let allowedDevice = await kvCmd('GET', 'allowed_device');
-      let isUsed = await kvCmd('GET', 'is_used'); // ⚡ واش الكود ديجا تخدم ⚡
+      let isUsed = await kvCmd('GET', 'is_used'); 
       
       let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
@@ -55,7 +88,7 @@ export default async function handler(req, res) {
 
       if (providedKey === savedKey && isDeviceAllowed) {
           
-          // ⚡ فحص واش الكود ديجا تفعل من قبل ⚡
+          // فحص واش الكود ديجا تفعل من قبل (مرة وحدة)
           if (isUsed === '1') {
               await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, 
@@ -74,7 +107,7 @@ export default async function handler(req, res) {
               });
           }
 
-          // ⚡ أول مرة كيتخدم الكود: كنحسبو الوقت وكنحرقوه ⚡
+          // أول مرة كيتخدم الكود: كنحسبو الوقت وكنحرقوه
           let expiresAt = Date.now() + (durationMinutes * 60 * 1000);
           await kvCmd('SET', 'active_expiry', expiresAt.toString());
           await kvCmd('SET', 'is_used', '1'); // حرقت الكود
@@ -106,8 +139,6 @@ export default async function handler(req, res) {
   }
   // ==========================================
 
-  const type = req.query.type;
-
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
@@ -118,6 +149,9 @@ export default async function handler(req, res) {
   };
 
   try {
+    // ==========================================
+    // ⚡ 3. استقبال الأوامر من التطبيق (Server Poll) ⚡
+    // ==========================================
     if (type === 'command') {
       const cmd = remoteCommand;
       remoteCommand = ""; 
@@ -125,7 +159,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // ⚡ 3. التحكم من تيليجرام (Webhook) ⚡
+    // ⚡ 4. التحكم من تيليجرام (Webhook) ⚡
     // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
@@ -163,7 +197,7 @@ export default async function handler(req, res) {
             const minutes = args[2] ? parseInt(args[2]) : 5; 
             await kvCmd('SET', 'app_secret_key', key); 
             await kvCmd('SET', 'key_duration', minutes);
-            await kvCmd('SET', 'is_used', '0'); // ⚡ الكود جديد، مازال متخدمش
+            await kvCmd('SET', 'is_used', '0'); 
             await kvCmd('DEL', 'active_expiry');
             await kvCmd('DEL', 'allowed_device');
             await sendToTelegram(`✅ <b>كود جديد (مرة وحدة):</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.\n⚠️ هذا الكود سيتحرق بمجرد استخدامه!`); 
@@ -181,7 +215,7 @@ export default async function handler(req, res) {
             
             await kvCmd('SET', 'app_secret_key', newKey);
             await kvCmd('SET', 'key_duration', minutes);
-            await kvCmd('SET', 'is_used', '0'); // ⚡ الكود جديد
+            await kvCmd('SET', 'is_used', '0'); 
             await kvCmd('SET', 'allowed_device', deviceId); 
             await kvCmd('DEL', 'active_expiry');
             
