@@ -39,7 +39,7 @@ export default async function handler(req, res) {
               method: "POST",
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
-                  model: "llama3-8b-8192", 
+                  model: "llama-3.1-8b-instant", 
                   messages: [
                       { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
@@ -55,30 +55,39 @@ export default async function handler(req, res) {
       }
   }
 
-  // ⚡ 2. التحقق من التفعيل ⚡
+  // ⚡ 2. التفعيل ديال التطبيق ⚡
   if (req.method === 'POST' && req.body && req.body.p_key) {
-      // ... (باقي كود التفعيل كيفما هو، ماغاديش نبدلو) ...
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
+
       const isBannedAll = await kvCmd('GET', 'ban_all');
       if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "All devices are banned.", expires_at: 0, signature: "" });
+      
       const isDeviceBanned = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
       if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "This device is banned.", expires_at: 0, signature: "" });
+
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
       let allowedDevice = await kvCmd('GET', 'allowed_device');
       let isUsed = await kvCmd('GET', 'is_used'); 
       let usedDeviceId = await kvCmd('GET', 'used_device_id');
       let activeExpiry = await kvCmd('GET', 'active_expiry');
+      
       let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
+
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
-          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
-          if (isUsed === '1' && currentTime > expiresAt) return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
+
+          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
+              return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
+          }
+          if (isUsed === '1' && currentTime > expiresAt) {
+              return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
+          }
           if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
               if (isUsed === '0') {
                   expiresAt = currentTime + (durationMinutes * 60 * 1000);
@@ -93,14 +102,19 @@ export default async function handler(req, res) {
       }
   }
 
+  // ⚡ 3. دالة إرسال الرسائل لتيليجرام ⚡
   const sendToTelegram = async (text, chatId, keyboard = null) => {
-    if (TELEGRAM_TOKEN && chatId) {
+    try {
       const payload = { chat_id: chatId, text: text, parse_mode: 'HTML' };
       if (keyboard) payload.reply_markup = keyboard;
-      await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(payload)
-      }).catch(() => {});
+      });
+      const data = await response.json();
+      if (!data.ok) console.error("Telegram Error:", data); // كيسجل الخطأ فـ Vercel Logs
+    } catch (err) {
+      console.error("Fetch Error:", err);
     }
   };
 
@@ -111,28 +125,27 @@ export default async function handler(req, res) {
       return res.status(200).send(`"${cmd}"`);
     }
 
-    // ⚡ 4. التحكم من تيليجرام ⚡
+    // ⚡ 4. استقبال رسائل تيليجرام ⚡
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
+      if (!body || (!body.message && !body.callback_query)) return res.status(200).end(); 
+
       const msg = body.message || body.callback_query;
-      if (!msg) return res.status(200).end();
-      
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
-      // 1. معالجة زر HUD
+      // 1. زر HUD (غير للأدمن)
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
-          const data = body.callback_query.data;
-          if (data === 'hud') {
+          if (body.callback_query.data === 'hud') {
               remoteCommand = "hud_on:1"; 
               await sendToTelegram("✅ تم إرسال الأمر للتطبيق: تشغيل HUD 🚀", chatId);
           }
           return res.status(200).end();
       }
 
-      // 2. إلا كان نتا (الأدمن) وصيفطتي أمر
+      // 2. أوامر التحكم (غير للأدمن)
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/);
           const command = args[0].toLowerCase();
@@ -158,20 +171,20 @@ export default async function handler(req, res) {
           }
       }
 
-      // 3. أي واحد آخر (أو الأدمن إلا صيفط رسالة عادية) -> AI كيرد
-      if (text) {
-          try {
-              if (text.startsWith('/start')) {
-                  await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
-                  return res.status(200).end();
-              }
+      // 3. أي واحد آخر صيفط /start
+      if (text.startsWith('/start')) {
+          await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
+          return res.status(200).end();
+      }
 
-              // الاتصال بـ Groq
+      // 4. أي واحد آخر صيفط رسالة عادية -> AI كيرد
+      if (text && !text.startsWith('/')) {
+          try {
               const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
-                      model: "llama3-8b-8192", // موديل مضمون 100%
+                      model: "llama-3.1-8b-instant",
                       messages: [
                           { role: "system", content: "أنت مساعد ذكي بالدارجة المغربية. تجاوب بشكل مفيد وودود." },
                           { role: "user", content: text }
@@ -196,6 +209,7 @@ export default async function handler(req, res) {
     }
     return res.status(404).send('"Not Found"');
   } catch (error) {
+    console.error(error); // كيسجل الخطأ فـ Vercel
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
