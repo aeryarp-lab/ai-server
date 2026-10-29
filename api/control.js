@@ -39,7 +39,7 @@ export default async function handler(req, res) {
               method: "POST",
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
-                  model: "openai/gpt-oss-20b", 
+                  model: "llama3-8b-8192", 
                   messages: [
                       { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
                       { role: "user", content: prompt }
@@ -57,39 +57,28 @@ export default async function handler(req, res) {
 
   // ⚡ 2. التحقق من التفعيل ⚡
   if (req.method === 'POST' && req.body && req.body.p_key) {
+      // ... (باقي كود التفعيل كيفما هو، ماغاديش نبدلو) ...
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
-
       const isBannedAll = await kvCmd('GET', 'ban_all');
       if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "All devices are banned.", expires_at: 0, signature: "" });
-      
       const isDeviceBanned = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
       if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "This device is banned.", expires_at: 0, signature: "" });
-
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
       let allowedDevice = await kvCmd('GET', 'allowed_device');
       let isUsed = await kvCmd('GET', 'is_used'); 
       let usedDeviceId = await kvCmd('GET', 'used_device_id');
       let activeExpiry = await kvCmd('GET', 'active_expiry');
-      
       let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
-
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
-
-          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
-              return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
-          }
-
-          if (isUsed === '1' && currentTime > expiresAt) {
-              return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
-          }
-
+          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
+          if (isUsed === '1' && currentTime > expiresAt) return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
           if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
               if (isUsed === '0') {
                   expiresAt = currentTime + (durationMinutes * 60 * 1000);
@@ -132,7 +121,7 @@ export default async function handler(req, res) {
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
-      // 1. معالجة زر HUD (غير للأدمن)
+      // 1. معالجة زر HUD
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
           const data = body.callback_query.data;
@@ -143,45 +132,22 @@ export default async function handler(req, res) {
           return res.status(200).end();
       }
 
-      // 2. الأوامر ديال التحكم (غير للأدمن)
+      // 2. إلا كان نتا (الأدمن) وصيفطتي أمر
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/);
           const command = args[0].toLowerCase();
-
           switch (command) {
             case '/start': case '/menu': 
-              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, {
-                  inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]]
-              }); 
+              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
               return res.status(200).end();
             case '/help': 
-              await sendToTelegram("👑 <b>لوحة التحكم (للأدمن)</b>\n\n" +
-                "⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n" +
-                "🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n" +
-                "💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp", chatId); 
+              await sendToTelegram("👑 <b>لوحة التحكم (للأدمن)</b>\n\n⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp", chatId); 
               return res.status(200).end();
             case '/setkey':
-              if(args[1]) { 
-                await kvCmd('SET', 'app_secret_key', args[1]); 
-                await kvCmd('SET', 'key_duration', args[2] ? parseInt(args[2]) : 5);
-                await kvCmd('SET', 'is_used', '0'); 
-                await kvCmd('DEL', 'active_expiry');
-                await kvCmd('DEL', 'allowed_device');
-                await kvCmd('DEL', 'used_device_id');
-                await sendToTelegram(`✅ <b>كود جديد:</b> <code>${args[1]}</code>`, chatId); 
-              }
+              if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await kvCmd('SET', 'key_duration', args[2] ? parseInt(args[2]) : 5); await kvCmd('SET', 'is_used', '0'); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'allowed_device'); await kvCmd('DEL', 'used_device_id'); await sendToTelegram(`✅ <b>كود جديد:</b> <code>${args[1]}</code>`, chatId); }
               return res.status(200).end();
             case '/genkey':
-              if(args[1] && args[2]) {
-                const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-                await kvCmd('SET', 'app_secret_key', newKey);
-                await kvCmd('SET', 'key_duration', parseInt(args[2]));
-                await kvCmd('SET', 'is_used', '0'); 
-                await kvCmd('SET', 'allowed_device', args[1]); 
-                await kvCmd('DEL', 'active_expiry');
-                await kvCmd('DEL', 'used_device_id');
-                await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b> <code>${newKey}</code>\n📱 للجهاز: <code>${args[1]}</code>`, chatId);
-              }
+              if(args[1] && args[2]) { const newKey = Math.random().toString(36).substring(2, 8).toUpperCase(); await kvCmd('SET', 'app_secret_key', newKey); await kvCmd('SET', 'key_duration', parseInt(args[2])); await kvCmd('SET', 'is_used', '0'); await kvCmd('SET', 'allowed_device', args[1]); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'used_device_id'); await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b> <code>${newKey}</code>\n📱 للجهاز: <code>${args[1]}</code>`, chatId); }
               return res.status(200).end();
             case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`🚫 محظور: ${args[1]}`, chatId); } return res.status(200).end();
             case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ تم إلغاء الحظر: ${args[1]}`, chatId); } return res.status(200).end();
@@ -192,14 +158,20 @@ export default async function handler(req, res) {
           }
       }
 
-      // 3. أي واحد آخر (أو الأدمن إلا صيفط رسالة عادية بلا /) -> الذكاء الاصطناعي كيرد
-      if (text && !text.startsWith('/')) {
+      // 3. أي واحد آخر (أو الأدمن إلا صيفط رسالة عادية) -> AI كيرد
+      if (text) {
           try {
+              if (text.startsWith('/start')) {
+                  await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
+                  return res.status(200).end();
+              }
+
+              // الاتصال بـ Groq
               const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
-                      model: "openai/gpt-oss-20b",
+                      model: "llama3-8b-8192", // موديل مضمون 100%
                       messages: [
                           { role: "system", content: "أنت مساعد ذكي بالدارجة المغربية. تجاوب بشكل مفيد وودود." },
                           { role: "user", content: text }
@@ -218,11 +190,6 @@ export default async function handler(req, res) {
               await sendToTelegram("⚠️ وقع خطأ فـ الاتصال.", chatId);
           }
           return res.status(200).end();
-      }
-
-      // 4. إلا كان شي واحد آخر صيفط /start
-      if (text.startsWith('/start')) {
-          await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
       }
 
       return res.status(200).end();
