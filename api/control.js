@@ -18,20 +18,19 @@ async function kvCmd(...args) {
   } catch (e) { return null; }
 }
 
-let activeDevice = "";
-let keyExpiryTime = 0;
-let totalAttempts = 0;
-let recentLogs = [];
 let remoteCommand = "";
 
 export default async function handler(req, res) {
+  // إعدادات CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, apikey, Authorization');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ⚡ 1. التحقق من الليصونص (G vcam) ⚡
+  // ==========================================
+  // ⚡ 1. بلوك التفعيل ديال التطبيق (G vcam) ⚡
+  // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
       let savedKey = await kvCmd('GET', 'app_secret_key');
@@ -41,7 +40,16 @@ export default async function handler(req, res) {
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
 
       if (providedKey === savedKey) {
-          const expiresAt = Date.now() + (durationMinutes * 60 * 1000);
+          // كنجيبو وقت الانتهاء من الذاكرة (Upstash)
+          let storedExpiry = await kvCmd('GET', 'active_expiry');
+          let expiresAt = storedExpiry ? parseInt(storedExpiry) : 0;
+
+          // إلا كان الوقت سالا ولا مازال ما تفعلش، كنعطيوه وقت جديد (مرة وحدة)
+          if (expiresAt === 0 || Date.now() > expiresAt) {
+              expiresAt = Date.now() + (durationMinutes * 60 * 1000);
+              await kvCmd('SET', 'active_expiry', expiresAt.toString());
+          }
+
           return res.status(200).json({
               valid: true,
               message: "Activated successfully",
@@ -57,9 +65,9 @@ export default async function handler(req, res) {
           });
       }
   }
+  // ==========================================
 
   const type = req.query.type;
-  const deviceId = req.query.device_id;
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
@@ -83,30 +91,18 @@ export default async function handler(req, res) {
   };
 
   try {
-    if (type === 'secret') {
-      const saved = await kvCmd('GET', 'app_lock_status');
-      return res.status(200).send(`"${saved || 'lock'}"`);
-    }
-    if (type === 'key') {
-      const saved = await kvCmd('GET', 'app_secret_key');
-      return res.status(200).send(`"${saved || 'MODARK2026'}"`);
-    }
-    
-    // ⚡ 2. استقبال الأوامر من التطبيق ⚡
+    // ==========================================
+    // ⚡ 2. استقبال الأوامر من التطبيق (Server Poll) ⚡
+    // ==========================================
     if (type === 'command') {
-      if (deviceId && activeDevice === deviceId && keyExpiryTime > 0) {
-        if (Date.now() > keyExpiryTime) {
-          keyExpiryTime = 0;
-          activeDevice = "";
-          await kvCmd('SET', 'is_single_use', '0');
-          return res.status(200).send('"killapp:1"');
-        }
-      }
       const cmd = remoteCommand;
-      remoteCommand = ""; 
+      remoteCommand = ""; // كيتنفذ غير مرة وحدة
       return res.status(200).send(`"${cmd}"`);
     }
 
+    // ==========================================
+    // ⚡ 3. التحكم من تيليجرام (Webhook) ⚡
+    // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
@@ -128,22 +124,36 @@ export default async function handler(req, res) {
           await sendToTelegram(`👑 *لوحة التحكم*\n\n` +
             `⚡ *الأوامر:*\n` +
             `/setkey <KEY> <MINUTES> - وضع كود ومدة تفعيله\n` +
+            `/gentime <MINUTES> - توليد كود عشوائي بوقت\n` +
             `/cmd <message> - إطلاق إشعار (Toast)\n` +
             `/url <link> - فتح رابط فـ الهاتف\n` +
             `/killapp - غلق التطبيق بالقوة\n` +
             `/ping - تجربة الاتصال`); 
           break;
         
+        // ⚡ توليد كود جديد بوقت (كيمسح الوقت القديم باش يبدا من جديد) ⚡
         case '/setkey':
           if(args[1]) { 
             const key = args[1];
             const minutes = args[2] ? parseInt(args[2]) : 5; 
             await kvCmd('SET', 'app_secret_key', key); 
             await kvCmd('SET', 'key_duration', minutes);
-            await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${key}\`\n⏱️ *Duration:* ${minutes} minutes`); 
+            await kvCmd('DEL', 'active_expiry'); // مسح الوقت القديم
+            await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${key}\`\n⏱️ *Duration:* ${minutes} minutes\n> الكود جاهز للاستعمال مرة واحدة.`); 
           } else {
             await sendToTelegram("⚠️ استعمل: `/setkey MODARK2026 5`");
           }
+          break;
+
+        case '/gentime':
+          if(args[1]) {
+            const minutes = parseInt(args[1]);
+            const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+            await kvCmd('SET', 'app_secret_key', newKey);
+            await kvCmd('SET', 'key_duration', minutes);
+            await kvCmd('DEL', 'active_expiry'); // مسح الوقت القديم
+            await sendToTelegram(`⏱️ *مفتاح بوقت محدد:*\nالكود: \`${newKey}\`\nالمدة: \`${minutes}\` دقيقة\n> الكود جاهز للاستعمال مرة واحدة.`);
+          } else await sendToTelegram("⚠️ استعمل: `/gentime 60`");
           break;
 
         case '/cmd': 
