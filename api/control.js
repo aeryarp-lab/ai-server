@@ -26,11 +26,10 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, apikey, Authorization');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
-
   const type = req.query.type;
 
   // ==========================================
-  // ⚡ 1. بلوك الذكاء الاصطناعي للتطبيق (AI Chat) ⚡
+  // ⚡ 1. بلوك الذكاء الاصطناعي ⚡
   // ==========================================
   if (type === 'ai' && req.query.prompt) {
       try {
@@ -58,7 +57,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 2. التحقق من التفعيل (G vcam) ⚡
+  // ⚡ 2. التحقق من التفعيل ⚡
   // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
@@ -73,34 +72,26 @@ export default async function handler(req, res) {
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
       let allowedDevice = await kvCmd('GET', 'allowed_device');
-      
       let isUsed = await kvCmd('GET', 'is_used'); 
       let usedDeviceId = await kvCmd('GET', 'used_device_id');
       let activeExpiry = await kvCmd('GET', 'active_expiry');
       
       let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
-
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
 
-          // إذا كان المفتاح مستعمل في جهاز آخر
           if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
               return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
           }
-
-          // إذا كان الوقت سالا
           if (isUsed === '1' && currentTime > expiresAt) {
               return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
           }
-
-          // إذا كان جديد، أو نفس الجهاز والوقت مازال ما سالاش
           if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
               if (isUsed === '0') {
-                  // أول مرة كيتخدم: كنحسبو الوقت وكنسجلو الجهاز
                   expiresAt = currentTime + (durationMinutes * 60 * 1000);
                   await kvCmd('SET', 'active_expiry', expiresAt.toString());
                   await kvCmd('SET', 'is_used', '1');
@@ -113,13 +104,50 @@ export default async function handler(req, res) {
       }
   }
 
-  const sendToTelegram = async (text, chatId, keyboard = null) => {
+  // ==========================================
+  // ⚡ 3. الدفع عبر PayPal ⚡
+  // ==========================================
+  if (req.method === 'POST' && type === 'paypal_ipn') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      return new Promise((resolve) => {
+          req.on('end', async () => {
+              const params = new URLSearchParams(body);
+              if (params.get('payment_status') === 'Completed') {
+                  const txnId = params.get('txn_id');
+                  const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+                  await kvCmd('SET', `paypal_key_${txnId}`, newKey);
+                  await kvCmd('EXPIRE', `paypal_key_${txnId}`, 86400);
+                  
+                  await kvCmd('SET', 'app_secret_key', newKey);
+                  await kvCmd('SET', 'key_duration', 43200); // 30 يوم
+                  await kvCmd('SET', 'is_used', '0');
+                  await kvCmd('DEL', 'active_expiry');
+                  
+                  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}` })
+                  }).catch(()=>{});
+              }
+              res.status(200).send("OK");
+              resolve();
+          });
+      });
+  }
+
+  if (type === 'get_key' && req.query.txn_id) {
+      const key = await kvCmd('GET', `paypal_key_${req.query.txn_id}`);
+      return key ? res.status(200).json({ success: true, key }) : res.status(200).json({ success: false });
+  }
+
+  // ==========================================
+  // ⚡ 4. أوامر تيليجرام ⚡
+  // ==========================================
+  const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
-      const payload = { chat_id: chatId, text: text, parse_mode: 'HTML' };
-      if (keyboard) payload.reply_markup = keyboard;
       await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' })
       }).catch(() => {});
     }
   };
@@ -131,9 +159,6 @@ export default async function handler(req, res) {
       return res.status(200).send(`"${cmd}"`);
     }
 
-    // ==========================================
-    // ⚡ 3. التحكم من تيليجرام (Webhook) ⚡
-    // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
       if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) {} }
@@ -143,18 +168,15 @@ export default async function handler(req, res) {
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
-      // 1. معالجة زر "Show Floating HUD" (غير للأدمن)
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
-          const data = body.callback_query.data;
-          if (data === 'hud') {
+          if (body.callback_query.data === 'hud') {
               remoteCommand = "hud_on:1"; 
-              await sendToTelegram("✅ تم إرسال الأمر للتطبيق: تشغيل HUD 🚀", chatId);
+              await sendToTelegram("✅ تم إرسال الأمر: تشغيل HUD 🚀", chatId);
           }
           return res.status(200).end();
       }
 
-      // 2. إلا كان المستخدم هو الأدمن وصيفط أمر (كيبدا بـ /)
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/);
           const command = args[0].toLowerCase();
@@ -162,52 +184,40 @@ export default async function handler(req, res) {
           switch (command) {
             case '/start': case '/menu': 
               await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\nالنظام جاهز.", chatId, {
-                  inline_keyboard: [
-                      [{ text: "🚀 Show Floating HUD", callback_data: "hud" }]
-                  ]
+                  inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]]
               }); 
               return res.status(200).end();
             
             case '/help': 
               await sendToTelegram(`👑 <b>لوحة التحكم (للأدمن)</b>\n\n` +
-                `⚡ <b>التفعيل:</b>\n` +
-                `/setkey [KEY] [MIN] - كود عام\n` +
-                `/genkey [DEVICE_ID] [MIN] - كود مخصص\n\n` +
-                `🚫 <b>الحظر:</b>\n` +
-                `/ban [DEVICE_ID] /unban [DEVICE_ID]\n` +
-                `/banall /unbanall\n\n` +
-                `💀 <b>التحكم:</b>\n` +
-                `/cmd [msg] /url [link] /killapp\n\n` +
-                `🤖 <b>ملاحظة:</b> أي واحد آخر يكتب رسالة عادية، البوت غادي يجاوبو بالذكاء الاصطناعي.`, chatId); 
+                `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n` +
+                `🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n` +
+                `💳 <b>الدفع:</b>\n/showpay - فتح صفحة الدفع\n\n` +
+                `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp`, chatId); 
               return res.status(200).end();
             
+            case '/showpay':
+              remoteCommand = "showpay:1";
+              await sendToTelegram("✅ تم إرسال الأمر: فتح صفحة الدفع فـ التطبيق.", chatId);
+              return res.status(200).end();
+
             case '/setkey':
               if(args[1]) { 
-                const key = args[1];
-                const minutes = args[2] ? parseInt(args[2]) : 5; 
-                await kvCmd('SET', 'app_secret_key', key); 
-                await kvCmd('SET', 'key_duration', minutes);
-                await kvCmd('SET', 'is_used', '0'); 
-                await kvCmd('DEL', 'active_expiry');
-                await kvCmd('DEL', 'allowed_device');
-                await kvCmd('DEL', 'used_device_id');
+                const key = args[1]; const minutes = args[2] ? parseInt(args[2]) : 5; 
+                await kvCmd('SET', 'app_secret_key', key); await kvCmd('SET', 'key_duration', minutes);
+                await kvCmd('SET', 'is_used', '0'); await kvCmd('DEL', 'active_expiry');
+                await kvCmd('DEL', 'allowed_device'); await kvCmd('DEL', 'used_device_id');
                 await sendToTelegram(`✅ <b>كود جديد:</b> <code>${key}</code>\n⏱️ المدة: ${minutes} دقيقة.`, chatId); 
-              } else {
-                await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
-              }
+              } else await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
               return res.status(200).end();
 
             case '/genkey':
               if(args[1] && args[2]) {
-                const deviceId = args[1];
-                const minutes = parseInt(args[2]);
+                const deviceId = args[1]; const minutes = parseInt(args[2]);
                 const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-                await kvCmd('SET', 'app_secret_key', newKey);
-                await kvCmd('SET', 'key_duration', minutes);
-                await kvCmd('SET', 'is_used', '0'); 
-                await kvCmd('SET', 'allowed_device', deviceId); 
-                await kvCmd('DEL', 'active_expiry');
-                await kvCmd('DEL', 'used_device_id');
+                await kvCmd('SET', 'app_secret_key', newKey); await kvCmd('SET', 'key_duration', minutes);
+                await kvCmd('SET', 'is_used', '0'); await kvCmd('SET', 'allowed_device', deviceId); 
+                await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'used_device_id');
                 await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b>\n🔑 الكود: <code>${newKey}</code>\n📱 للجهاز: <code>${deviceId}</code>\n⏳ المدة: ${minutes} دقيقة.`, chatId);
               } else await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>", chatId);
               return res.status(200).end();
@@ -228,8 +238,7 @@ export default async function handler(req, res) {
               return res.status(200).end();
 
             case '/unbanall':
-              await kvCmd('DEL', 'ban_all');
-              await kvCmd('DEL', 'banned_devices'); 
+              await kvCmd('DEL', 'ban_all'); await kvCmd('DEL', 'banned_devices'); 
               await sendToTelegram("✅ <b>تم إلغاء الحظر على جميع الأجهزة.</b>", chatId);
               return res.status(200).end();
 
@@ -249,13 +258,11 @@ export default async function handler(req, res) {
           }
       }
 
-      // 3. رد على /start لأي شخص آخر ماشي الأدمن
       if (text === '/start') {
-          await sendToTelegram("أهلاً بك! 👋 أنا مساعد ذكي بالذكاء الاصطناعي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
+          await sendToTelegram("أهلاً بك! 👋 أنا مساعد ذكي. تقدر تسولني أي حاجة.", chatId);
           return res.status(200).end();
       }
 
-      // 4. أي شخص (الأدمن أو غيره) يكتب رسالة عادية -> الذكاء الاصطناعي كيرد
       if (text && !text.startsWith('/')) {
           try {
               const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -263,26 +270,18 @@ export default async function handler(req, res) {
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
                   body: JSON.stringify({
                       model: "openai/gpt-oss-20b",
-                      messages: [
-                          { role: "system", content: "أنت مساعد ذكي بالدارجة المغربية. تجاوب بشكل مفيد وودود." },
-                          { role: "user", content: text }
-                      ],
+                      messages: [{ role: "system", content: "أنت مساعد ذكي بالدارجة المغربية." }, { role: "user", content: text }],
                       temperature: 0.7
                   })
               });
               const data = await groqRes.json();
-              if (data.error) {
-                  await sendToTelegram("⚠️ خطأ: " + data.error.message, chatId);
-              } else {
-                  const aiText = data?.choices?.[0]?.message?.content || "سمح ليا، مافهمتش.";
-                  await sendToTelegram(aiText.trim(), chatId);
-              }
+              if (data.error) await sendToTelegram("⚠️ خطأ: " + data.error.message, chatId);
+              else await sendToTelegram((data?.choices?.[0]?.message?.content || "سمح ليا، مافهمتش.").trim(), chatId);
           } catch (e) {
               await sendToTelegram("⚠️ وقع خطأ فـ الاتصال.", chatId);
           }
           return res.status(200).end();
       }
-
       return res.status(200).end();
     }
     return res.status(404).send('"Not Found"');
