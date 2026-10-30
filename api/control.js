@@ -87,16 +87,20 @@ export default async function handler(req, res) {
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
 
+          // إذا كان المفتاح مستعمل في جهاز آخر
           if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
               return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
           }
 
+          // إذا كان الوقت سالا
           if (isUsed === '1' && currentTime > expiresAt) {
               return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
           }
 
+          // إذا كان جديد، أو نفس الجهاز والوقت مازال ما سالاش
           if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
               if (isUsed === '0') {
+                  // أول مرة كيتخدم: كنحسبو الوقت وكنسجلو الجهاز
                   expiresAt = currentTime + (durationMinutes * 60 * 1000);
                   await kvCmd('SET', 'active_expiry', expiresAt.toString());
                   await kvCmd('SET', 'is_used', '1');
@@ -128,7 +132,7 @@ export default async function handler(req, res) {
     }
 
     // ==========================================
-    // ⚡ 4. التحكم من تيليجرام (Webhook) ⚡
+    // ⚡ 3. التحكم من تيليجرام (Webhook) ⚡
     // ==========================================
     if (req.method === 'POST' && type === 'telegram_webhook') {
       let body = req.body;
