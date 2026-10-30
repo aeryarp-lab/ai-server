@@ -29,47 +29,7 @@ export default async function handler(req, res) {
   const type = req.query.type;
 
   // ==========================================
-  // ⚡ 1. طلب كود لجهاز معين (جديد) ⚡
-  // ==========================================
-  if (type === 'device_key' && req.query.device_id) {
-      const deviceId = req.query.device_id;
-      const deviceModel = req.query.model || "Unknown Model";
-      
-      // 1. نشوفو واش عندو ديجا كود مسجل
-      let existingKey = await kvCmd('GET', `device_key_${deviceId}`);
-      
-      if (!existingKey) {
-          // 2. إلا ماكانش، كنولدولو كود جديد (6 حروف/أرقام)
-          existingKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-          
-          // 3. كنسجلوه فـ قاعدة البيانات وكنربطوه بالجهاز
-          await kvCmd('SET', `device_key_${deviceId}`, existingKey);
-          
-          // 4. كنخليو هاد الكود هو اللي كيتفعل بيه التطبيق لمدة 30 يوم (ولا شحال بغيتي)
-          await kvCmd('SET', 'app_secret_key', existingKey);
-          await kvCmd('SET', 'key_duration', 43200); // 30 يوم
-          await kvCmd('SET', 'is_used', '0');
-          await kvCmd('SET', 'allowed_device', deviceId); // مربوط غير بهاد الجهاز
-          await kvCmd('DEL', 'active_expiry');
-          await kvCmd('DEL', 'used_device_id');
-
-          // 5. كنصيفطو ليك فـ تيليجرام
-          await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ 
-                chat_id: TELEGRAM_CHAT_ID, 
-                text: `📱 <b>طلب كود جديد من جهاز:</b>\n\n📦 <b>الجهاز:</b> ${deviceModel}\n🆔 <b>Device ID:</b> <code>${deviceId}</code>\n\n🔑 <b>الكود المولد:</b> <code>${existingKey}</code>\n> (مرتبط بهذا الجهاز فقط)`,
-                parse_mode: 'HTML'
-            })
-          }).catch(()=>{});
-      }
-      
-      // كيرجع الكود للتطبيق باش يعرضو للمستخدم
-      return res.status(200).json({ success: true, key: existingKey, message: "Device key generated." });
-  }
-
-  // ==========================================
-  // ⚡ 2. بلوك الذكاء الاصطناعي ⚡
+  // ⚡ 1. بلوك الذكاء الاصطناعي ⚡
   // ==========================================
   if (type === 'ai' && req.query.prompt) {
       try {
@@ -97,12 +57,25 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 3. التحقق من التفعيل ⚡
+  // ⚡ 2. التحقق من التفعيل مع الحماية (Brute Force) ⚡
   // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
+      // 1. فحص واش الجهاز محظور مؤقتاً
+      let blockUntil = await kvCmd('GET', `block_until_${deviceId}`);
+      if (blockUntil && Date.now() < parseInt(blockUntil)) {
+          const minsLeft = Math.ceil((parseInt(blockUntil) - Date.now()) / 60000);
+          return res.status(200).json({ 
+              valid: false, 
+              message: `⛔ تم حظر هذا الجهاز مؤقتاً بسبب محاولات خاطئة. المرجو الانتظار ${minsLeft} دقيقة.`, 
+              expires_at: 0, 
+              signature: "" 
+          });
+      }
+
+      // فحص الحظر الدائم (Ban)
       const isBannedAll = await kvCmd('GET', 'ban_all');
       if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "All devices are banned.", expires_at: 0, signature: "" });
       
@@ -120,7 +93,13 @@ export default async function handler(req, res) {
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
+      // إذا كان المفتاح صحيح
       if (providedKey === savedKey && isDeviceAllowed) {
+          
+          // مسح سجل المحاولات الفاشلة حيت دخل مزيان
+          await kvCmd('DEL', `fail_count_${deviceId}`);
+          await kvCmd('DEL', `block_until_${deviceId}`);
+
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
 
@@ -140,12 +119,49 @@ export default async function handler(req, res) {
               return res.status(200).json({ valid: true, message: "Activated successfully", expires_at: expiresAt, signature: "" });
           }
       } else {
-          return res.status(200).json({ valid: false, message: "Invalid license key", expires_at: 0, signature: "" });
+          // ❌ المفتاح خاطئ أو الجهاز غير مسموح
+          
+          let failCount = await kvCmd('GET', `fail_count_${deviceId}`);
+          failCount = failCount ? parseInt(failCount) : 0;
+          failCount++;
+          await kvCmd('SET', `fail_count_${deviceId}`, failCount.toString());
+          await kvCmd('EXPIRE', `fail_count_${deviceId}`, 86400); // يبقى مسجل 24 ساعة
+
+          let blockTime = 0;
+          let errorMsg = "Invalid license key";
+
+          if (failCount === 3) {
+              blockTime = 10 * 60 * 1000; // 10 دقائق
+              errorMsg = "لقد أخطأت 3 مرات. تم حظر هذا الجهاز لمدة 10 دقائق.";
+              
+              await sendToTelegram(`🚫 <b>جهاز تم حظره (10 دقائق)</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n⚠️ <b>السبب:</b> 3 محاولات فاشلة.`);
+          
+          } else if (failCount >= 4) {
+              blockTime = 60 * 60 * 1000; // ساعة كاملة
+              errorMsg = "لقد أخطأت مرة أخرى. تم حظر هذا الجهاز لمدة ساعة كاملة.";
+              
+              // نصفر العداد باش يبدا من جديد بعد الساعة
+              await kvCmd('SET', `fail_count_${deviceId}`, '0'); 
+              
+              await sendToTelegram(`⛔ <b>جهاز تم حظره (ساعة)</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n⚠️ <b>السبب:</b> تجاوز المحاولات المتاحة.`);
+          
+          } else {
+              // محاولة عادية (1 أو 2)
+              await sendToTelegram(`⚠️ <b>محاولة دخول فاشلة:</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n📊 <b>المحاولة:</b> ${failCount}/3`);
+          }
+
+          if (blockTime > 0) {
+              let unblockTime = Date.now() + blockTime;
+              await kvCmd('SET', `block_until_${deviceId}`, unblockTime.toString());
+              await kvCmd('EXPIRE', `block_until_${deviceId}`, blockTime / 1000);
+          }
+
+          return res.status(200).json({ valid: false, message: errorMsg, expires_at: 0, signature: "" });
       }
   }
 
   // ==========================================
-  // ⚡ 4. الدفع عبر PayPal ⚡
+  // ⚡ 3. الدفع عبر PayPal ⚡
   // ==========================================
   if (req.method === 'POST' && type === 'paypal_ipn') {
       let body = '';
@@ -155,8 +171,6 @@ export default async function handler(req, res) {
               const params = new URLSearchParams(body);
               if (params.get('payment_status') === 'Completed') {
                   const txnId = params.get('txn_id');
-                  const customDeviceId = params.get('custom'); // إلا صيفطنا الـ device_id فـ الدفع
-                  
                   const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
                   await kvCmd('SET', `paypal_key_${txnId}`, newKey);
                   await kvCmd('EXPIRE', `paypal_key_${txnId}`, 86400);
@@ -166,16 +180,9 @@ export default async function handler(req, res) {
                   await kvCmd('SET', 'is_used', '0');
                   await kvCmd('DEL', 'active_expiry');
                   
-                  if (customDeviceId) {
-                      await kvCmd('SET', 'allowed_device', customDeviceId);
-                      await kvCmd('SET', `device_key_${customDeviceId}`, newKey);
-                  } else {
-                      await kvCmd('DEL', 'allowed_device');
-                  }
-                  
                   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}\nDevice ID: ${customDeviceId || 'Global'}` })
+                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}` })
                   }).catch(()=>{});
               }
               res.status(200).send("OK");
@@ -190,7 +197,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 5. أوامر تيليجرام ⚡
+  // ⚡ 4. أوامر تيليجرام ⚡
   // ==========================================
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
