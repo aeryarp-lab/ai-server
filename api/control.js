@@ -150,7 +150,7 @@ export default async function handler(req, res) {
           return res.status(200).end();
       }
 
-      // 2. إلا كان المستخدم هو الأدمن و صيفط أمر (كيبدا بـ /)
+      // 2. إلا كان المستخدم هو الأدمن وصيفط أمر (كيبدا بـ /)
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/);
           const command = args[0].toLowerCase();
@@ -245,14 +245,15 @@ export default async function handler(req, res) {
           }
       }
 
-      // 3. أي شخص آخر (ولا الأدمن إلا صيفط رسالة عادية بلا /) -> الذكاء الاصطناعي كيرد
-      if (!text.startsWith('/') || chatId !== TELEGRAM_CHAT_ID) {
-          try {
-              if (text.startsWith('/start')) {
-                  await sendToTelegram("أهلاً بك! أنا مساعد ذكي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
-                  return res.status(200).end();
-              }
+      // 3. رد على /start لأي شخص آخر ماشي الأدمن
+      if (text === '/start') {
+          await sendToTelegram("أهلاً بك! 👋 أنا مساعد ذكي بالذكاء الاصطناعي. تقدر تسولني أي حاجة وغادي نجاوبك. 😊", chatId);
+          return res.status(200).end();
+      }
 
+      // 4. أي شخص (الأدمن أو غيره) يكتب رسالة عادية -> الذكاء الاصطناعي كيرد
+      if (text && !text.startsWith('/')) {
+          try {
               const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
