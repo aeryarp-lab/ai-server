@@ -29,7 +29,47 @@ export default async function handler(req, res) {
   const type = req.query.type;
 
   // ==========================================
-  // ⚡ 1. بلوك الذكاء الاصطناعي ⚡
+  // ⚡ 1. طلب كود لجهاز معين (جديد) ⚡
+  // ==========================================
+  if (type === 'device_key' && req.query.device_id) {
+      const deviceId = req.query.device_id;
+      const deviceModel = req.query.model || "Unknown Model";
+      
+      // 1. نشوفو واش عندو ديجا كود مسجل
+      let existingKey = await kvCmd('GET', `device_key_${deviceId}`);
+      
+      if (!existingKey) {
+          // 2. إلا ماكانش، كنولدولو كود جديد (6 حروف/أرقام)
+          existingKey = Math.random().toString(36).substring(2, 8).toUpperCase();
+          
+          // 3. كنسجلوه فـ قاعدة البيانات وكنربطوه بالجهاز
+          await kvCmd('SET', `device_key_${deviceId}`, existingKey);
+          
+          // 4. كنخليو هاد الكود هو اللي كيتفعل بيه التطبيق لمدة 30 يوم (ولا شحال بغيتي)
+          await kvCmd('SET', 'app_secret_key', existingKey);
+          await kvCmd('SET', 'key_duration', 43200); // 30 يوم
+          await kvCmd('SET', 'is_used', '0');
+          await kvCmd('SET', 'allowed_device', deviceId); // مربوط غير بهاد الجهاز
+          await kvCmd('DEL', 'active_expiry');
+          await kvCmd('DEL', 'used_device_id');
+
+          // 5. كنصيفطو ليك فـ تيليجرام
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                chat_id: TELEGRAM_CHAT_ID, 
+                text: `📱 <b>طلب كود جديد من جهاز:</b>\n\n📦 <b>الجهاز:</b> ${deviceModel}\n🆔 <b>Device ID:</b> <code>${deviceId}</code>\n\n🔑 <b>الكود المولد:</b> <code>${existingKey}</code>\n> (مرتبط بهذا الجهاز فقط)`,
+                parse_mode: 'HTML'
+            })
+          }).catch(()=>{});
+      }
+      
+      // كيرجع الكود للتطبيق باش يعرضو للمستخدم
+      return res.status(200).json({ success: true, key: existingKey, message: "Device key generated." });
+  }
+
+  // ==========================================
+  // ⚡ 2. بلوك الذكاء الاصطناعي ⚡
   // ==========================================
   if (type === 'ai' && req.query.prompt) {
       try {
@@ -57,7 +97,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 2. التحقق من التفعيل ⚡
+  // ⚡ 3. التحقق من التفعيل ⚡
   // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
@@ -105,7 +145,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 3. الدفع عبر PayPal ⚡
+  // ⚡ 4. الدفع عبر PayPal ⚡
   // ==========================================
   if (req.method === 'POST' && type === 'paypal_ipn') {
       let body = '';
@@ -115,6 +155,8 @@ export default async function handler(req, res) {
               const params = new URLSearchParams(body);
               if (params.get('payment_status') === 'Completed') {
                   const txnId = params.get('txn_id');
+                  const customDeviceId = params.get('custom'); // إلا صيفطنا الـ device_id فـ الدفع
+                  
                   const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
                   await kvCmd('SET', `paypal_key_${txnId}`, newKey);
                   await kvCmd('EXPIRE', `paypal_key_${txnId}`, 86400);
@@ -124,9 +166,16 @@ export default async function handler(req, res) {
                   await kvCmd('SET', 'is_used', '0');
                   await kvCmd('DEL', 'active_expiry');
                   
+                  if (customDeviceId) {
+                      await kvCmd('SET', 'allowed_device', customDeviceId);
+                      await kvCmd('SET', `device_key_${customDeviceId}`, newKey);
+                  } else {
+                      await kvCmd('DEL', 'allowed_device');
+                  }
+                  
                   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}` })
+                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}\nDevice ID: ${customDeviceId || 'Global'}` })
                   }).catch(()=>{});
               }
               res.status(200).send("OK");
@@ -141,7 +190,7 @@ export default async function handler(req, res) {
   }
 
   // ==========================================
-  // ⚡ 4. أوامر تيليجرام ⚡
+  // ⚡ 5. أوامر تيليجرام ⚡
   // ==========================================
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
