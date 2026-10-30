@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تم الدفع بنجاح</title>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #111; color: #fff; text-align: center; padding: 50px; }
+        .card { background: #222; padding: 30px; border-radius: 10px; border: 1px solid #00ff88; display: inline-block; width: 80%; max-width: 400px; }
+        h1 { color: #00ff88; }
+        .key-box { background: #000; padding: 15px; border: 1px dashed #00ff88; font-size: 24px; letter-spacing: 2px; margin: 20px 0; font-weight: bold; }
+        button { background: #00ff88; color: #000; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #loading { color: #ffcc00; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>✅ تم الدفع بنجاح!</h1>
+        <p>شكراً ليك. هاهو المفتاح ديالك:</p>
+        
+        <div id="loading">جاري توليد المفتاح... المرجو الانتظار شوية.</div>
+        
+        <div id="key-container" style="display:none;">
+            <div class="key-box" id="license-key">------</div>
+            <button onclick="copyKey()">نسخ المفتاح 📋</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const txnId = urlParams.get('txn_id'); 
+
+        if (txnId) {
+            let attempts = 0;
+            const interval = setInterval(() => {
+                fetch(`https://ai-server-seven-mu.vercel.app/api/control?type=get_key&txn_id=${txnId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        clearInterval(interval);
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('key-container').style.display = 'block';
+                        document.getElementById('license-key').innerText = data.key;
+                    }
+                    attempts++;
+                    if (attempts > 10) {
+                        clearInterval(interval);
+                        document.getElementById('loading').innerText = "تأخر توليد المفتاح، تواصل مع الدعم.";
+                    }
+                }).catch(err => console.log(err));
+            }, 2000);
+        } else {
+            document.getElementById('loading').innerText = "لم يتم العثور على رقم العملية.";
+        }
+
+        function copyKey() {
+            const key = document.getElementById('license-key').innerText;
+            navigator.clipboard.writeText(key).then(() => {
+                alert("تم نسخ المفتاح بنجاح! ✅");
+            });
+        }
+    </script>
+</body>
+</html>
