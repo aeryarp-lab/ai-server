@@ -191,11 +191,21 @@ export default async function handler(req, res) {
           if (body.callback_query.data === 'hud') { remoteCommand = "hud_on:1"; await sendToTelegram("✅ تشغيل HUD 🚀", chatId); }
           return res.status(200).end();
       }
+      
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/); const command = args[0].toLowerCase();
           switch (command) {
             case '/start': case '/menu': 
               await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
+              return res.status(200).end();
+            case '/help':
+              await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
+                `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n` +
+                `📱 <b>سجلات:</b>\n/devices\n\n` +
+                `🚫 <b>الحظر:</b>\n/ban /unban /banall /unbanall\n\n` +
+                `💳 <b>الدفع:</b>\n/showpay\n\n` +
+                `💬 <b>الذكاء الاصطناعي:</b>\n/chat\n\n` +
+                `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp`, chatId);
               return res.status(200).end();
             case '/devices':
               const logs = await kvCmd('LRANGE', 'device_logs', 0, 49);
@@ -206,7 +216,7 @@ export default async function handler(req, res) {
               remoteCommand = "showpay:1";
               await sendToTelegram("✅ فتح صفحة الدفع.", chatId);
               return res.status(200).end();
-            case '/showchat':
+            case '/chat': case '/showchat':
               remoteCommand = "showchat:1";
               await sendToTelegram("🤖 فتح الشات.", chatId);
               return res.status(200).end();
@@ -233,6 +243,7 @@ export default async function handler(req, res) {
             case '/ping': await sendToTelegram("🏓 Pong!", chatId); return res.status(200).end();
           }
       }
+      
       if (text === '/start') { await sendToTelegram("أهلاً بك! 👋 أنا مساعد ذكي.", chatId); return res.status(200).end(); }
       if (text && !text.startsWith('/')) {
           try {
