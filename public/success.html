@@ -3,66 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تم الدفع بنجاح</title>
+    <title>تم الدفع</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at top, #0a1f14, #000000);
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            border-radius: 24px;
-            padding: 40px 30px;
-            text-align: center;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: radial-gradient(circle at top, #0a1f14, #000); color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 24px; padding: 40px 30px; text-align: center; width: 100%; max-width: 420px; }
         .success-icon { font-size: 60px; margin-bottom: 20px; animation: pop 0.5s ease-out; }
         @keyframes pop { 0% { transform: scale(0); } 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
-        
-        h1 { color: #00ff88; margin-bottom: 10px; text-shadow: 0 0 10px rgba(0, 255, 136, 0.5); }
+        h1 { color: #00ff88; margin-bottom: 10px; }
         p { color: #ccc; margin-bottom: 25px; }
-        
-        .key-box {
-            background: #000;
-            padding: 20px;
-            border: 2px dashed #00ff88;
-            border-radius: 12px;
-            font-size: 28px;
-            letter-spacing: 3px;
-            margin: 20px 0;
-            font-weight: bold;
-            color: #00ff88;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
-            transition: 0.3s;
-        }
-        .key-box:hover { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
-        
-        button {
-            background: linear-gradient(90deg, #00ff88, #00cc6a);
-            color: #000;
-            border: none;
-            padding: 15px 30px;
-            font-size: 16px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-weight: bold;
-            width: 100%;
-            transition: 0.3s;
-            box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
-        }
-        button:hover { transform: scale(1.03); }
-        
+        .key-box { background: #000; padding: 20px; border: 2px dashed #00ff88; border-radius: 12px; font-size: 28px; letter-spacing: 3px; margin: 20px 0; font-weight: bold; color: #00ff88; }
+        button { background: linear-gradient(90deg, #00ff88, #00cc6a); color: #000; border: none; padding: 15px 30px; font-size: 16px; border-radius: 50px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; }
         #loading { color: #ffcc00; font-weight: bold; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
@@ -72,58 +23,38 @@
         <div class="success-icon" id="icon">⏳</div>
         <h1 id="title">جاري التحقق...</h1>
         <p id="subtitle">المرجو الانتظار، جاري توليد المفتاح الخاص بك.</p>
-        
         <div id="loading">جاري المعالجة...</div>
-        
         <div id="key-container" style="display:none;">
             <div class="key-box" id="license-key">------</div>
             <button onclick="copyKey()">📋 نسخ المفتاح</button>
         </div>
     </div>
-
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const txnId = urlParams.get('txn_id'); 
-
         if (txnId) {
             let attempts = 0;
             const interval = setInterval(() => {
                 fetch(`https://ai-server-seven-mu.vercel.app/api/control?type=get_key&txn_id=${txnId}`)
-                .then(res => res.json())
-                .then(data => {
+                .then(res => res.json()).then(data => {
                     if (data.success) {
                         clearInterval(interval);
                         document.getElementById('icon').innerText = '✅';
                         document.getElementById('title').innerText = 'تم الدفع بنجاح!';
-                        document.getElementById('subtitle').innerText = 'هاهو المفتاح ديالك، مرحبا بك في PRO.';
+                        document.getElementById('subtitle').innerText = 'هاهو المفتاح ديالك.';
                         document.getElementById('loading').style.display = 'none';
                         document.getElementById('key-container').style.display = 'block';
                         document.getElementById('license-key').innerText = data.key;
-                        
-                        // إعادة التوجيه للتطبيق
-                        setTimeout(() => {
-                            window.location.href = "gvcam://success?key=" + data.key;
-                        }, 3000); 
+                        setTimeout(() => { window.location.href = "gvcam://success?key=" + data.key; }, 3000); 
                     }
                     attempts++;
-                    if (attempts > 15) {
-                        clearInterval(interval);
-                        document.getElementById('loading').innerText = "تأخر توليد المفتاح، المرجو التواصل مع الدعم.";
-                        document.getElementById('loading').style.color = "#ff4444";
-                    }
+                    if (attempts > 15) { clearInterval(interval); document.getElementById('loading').innerText = "تأخر توليد المفتاح."; }
                 }).catch(err => console.log(err));
             }, 2000);
-        } else {
-            document.getElementById('loading').innerText = "لم يتم العثور على رقم العملية.";
-        }
-
+        } else { document.getElementById('loading').innerText = "لم يتم العثور على رقم العملية."; }
         function copyKey() {
             const key = document.getElementById('license-key').innerText;
-            navigator.clipboard.writeText(key).then(() => {
-                const btn = document.querySelector('button');
-                btn.innerText = "✅ تم النسخ!";
-                setTimeout(() => { btn.innerText = "📋 نسخ المفتاح"; }, 2000);
-            });
+            navigator.clipboard.writeText(key).then(() => { alert("تم النسخ! ✅"); });
         }
     </script>
 </body>
