@@ -6,128 +6,33 @@
     <title>AI Voice Mode</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background: radial-gradient(circle at 50% 100%, #0a1f44, #020813 70%); color: #fff; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; align-items: center; justify-content: flex-end; padding-bottom: 40px; }
         
-        body { 
-            background: radial-gradient(circle at 50% 100%, #0a1f44, #020813 70%); 
-            color: #fff; 
-            display: flex; 
-            flex-direction: column; 
-            height: 100dvh; 
-            overflow: hidden; 
-            align-items: center;
-            justify-content: flex-end;
-            padding-bottom: 40px;
-        }
+        .blob-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        .blob { width: 180px; height: 110px; background: radial-gradient(circle at bottom, #8ab4f8, #000 80%); border-radius: 60px; box-shadow: 0 0 50px rgba(138, 180, 248, 0.4); transition: all 0.3s ease; }
+        .blob.listening { background: radial-gradient(circle at bottom, #00ff88, #000 80%); box-shadow: 0 0 60px rgba(0, 255, 136, 0.6); animation: pulse 1.5s infinite alternate; }
+        .blob.speaking { background: radial-gradient(circle at bottom, #8ab4f8, #000 80%); box-shadow: 0 0 80px rgba(138, 180, 248, 0.8); animation: speakPulse 0.5s infinite alternate; }
+        
+        @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.1); } }
+        @keyframes speakPulse { 0% { transform: scale(1); border-radius: 60px; } 100% { transform: scale(1.15); border-radius: 40px; } }
 
-        /* الدائرة اللي كتدور فـ الوسط */
-        .blob-container {
-            position: absolute;
-            top: 40%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .blob {
-            width: 180px;
-            height: 110px;
-            background: radial-gradient(circle at bottom, #8ab4f8, #000 80%);
-            border-radius: 60px;
-            box-shadow: 0 0 50px rgba(138, 180, 248, 0.4);
-            transition: all 0.3s ease;
-        }
-
-        /* تأثيرات الحالة */
-        .blob.listening {
-            background: radial-gradient(circle at bottom, #00ff88, #000 80%);
-            box-shadow: 0 0 60px rgba(0, 255, 136, 0.6);
-            animation: pulse 1.5s infinite alternate;
-        }
-
-        .blob.speaking {
-            background: radial-gradient(circle at bottom, #8ab4f8, #000 80%);
-            box-shadow: 0 0 80px rgba(138, 180, 248, 0.8);
-            animation: speakPulse 0.5s infinite alternate;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.1); }
-        }
-
-        @keyframes speakPulse {
-            0% { transform: scale(1); border-radius: 60px; }
-            100% { transform: scale(1.15); border-radius: 40px; }
-        }
-
-        /* أزرار التحكم */
-        .controls {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            z-index: 10;
-        }
-
-        .btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #fff;
-            width: 55px;
-            height: 55px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-
+        .controls { display: flex; gap: 20px; align-items: center; justify-content: center; width: 100%; z-index: 10; }
+        .btn { background: #1a1a1a; border: 1px solid #333; color: #fff; width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; }
         .btn:active { transform: scale(0.9); }
         .btn.active { background: #333; border-color: #555; }
-        
         .btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-        
         .btn-mic { width: 65px; height: 65px; }
         .btn-mic.recording { background: #ff4444; border-color: #ff4444; animation: pulse 1s infinite; }
-
-        /* النص المخفي */
-        #status-text {
-            position: absolute;
-            bottom: 120px;
-            font-size: 14px;
-            color: #888;
-            text-align: center;
-        }
-
+        #status-text { position: absolute; bottom: 120px; font-size: 14px; color: #888; text-align: center; }
     </style>
 </head>
 <body>
-
     <div id="status-text">دق على الميكرو باش تهضر</div>
-
-    <div class="blob-container">
-        <div class="blob" id="blob"></div>
-    </div>
-
+    <div class="blob-container"><div class="blob" id="blob"></div></div>
     <div class="controls">
-        <!-- زر الإغلاق -->
-        <button class="btn" onclick="window.close()">
-            <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
-
-        <!-- زر الميكرو -->
-        <button class="btn btn-mic" id="mic-btn" onclick="toggleMic()">
-            <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
-        </button>
-
-        <!-- زر الإرسال (اختياري) -->
-        <button class="btn" id="send-btn" onclick="stopAndSend()">
-            <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-        </button>
+        <button class="btn" onclick="window.close()"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        <button class="btn btn-mic" id="mic-btn" onclick="startMic()"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></button>
+        <button class="btn" onclick="window.close()"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
 
     <script>
@@ -135,67 +40,28 @@
         const micBtn = document.getElementById('mic-btn');
         const statusText = document.getElementById('status-text');
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition;
-        let isRecording = false;
-
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'ar-MA';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-
-            recognition.onstart = function() {
-                isRecording = true;
-                micBtn.classList.add('recording');
-                blob.className = 'blob listening';
-                statusText.innerText = "جاري الاستماع...";
-            };
-
-            recognition.onresult = function(event) {
-                const text = event.results[0][0].transcript;
-                processUserText(text);
-            };
-
-            recognition.onerror = function(event) {
-                stopRecordingState();
-                statusText.innerText = "ماتسمعش مزيان، عاود جرب.";
-            };
-
-            recognition.onend = function() {
-                if (isRecording) {
-                    stopRecordingState();
-                    blob.className = 'blob speaking';
-                }
-            };
-        } else {
-            statusText.innerText = "المتصفح مكيدعمش الميكرو.";
-            micBtn.disabled = true;
-        }
-
-        function toggleMic() {
-            if (isRecording) {
-                recognition.stop();
+        // ⚡ كتنادى من Android ⚡
+        function startMic() {
+            statusText.innerText = "جاري الاستماع...";
+            micBtn.classList.add('recording');
+            blob.className = 'blob listening';
+            
+            if (window.Android && window.Android.startListening) {
+                window.Android.startListening();
             } else {
-                window.speechSynthesis.cancel(); // وقف أي صوت خدام
-                recognition.start();
+                alert("يرجى تشغيل التطبيق للسماح بالميكروفون.");
             }
         }
 
-        function stopRecordingState() {
-            isRecording = false;
+        // ⚡ كترجع من Android بالنص ⚡
+        function handleVoiceResult(text) {
             micBtn.classList.remove('recording');
-            blob.className = 'blob';
-        }
-
-        function stopAndSend() {
-            if (isRecording) recognition.stop();
-        }
-
-        async function processUserText(text) {
+            blob.className = 'blob speaking';
             statusText.innerText = "جاري التفكير...";
-            blob.className = 'blob speaking'; // مؤقتا
-            
+            sendToAI(text);
+        }
+
+        async function sendToAI(text) {
             try {
                 const url = `https://ai-server-seven-mu.vercel.app/api/control?type=ai&prompt=${encodeURIComponent(text)}`;
                 const response = await fetch(url); 
@@ -213,7 +79,6 @@
                 window.speechSynthesis.cancel(); 
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'ar-MA'; 
-                utterance.rate = 1.0;
                 
                 utterance.onstart = () => {
                     blob.className = 'blob speaking';
