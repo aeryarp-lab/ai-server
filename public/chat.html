@@ -7,15 +7,12 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
         body { background: radial-gradient(circle at 50% 100%, #0a1f44, #020813 70%); color: #fff; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; align-items: center; justify-content: flex-end; padding-bottom: 40px; }
-        
         .blob-container { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
         .blob { width: 180px; height: 110px; background: radial-gradient(circle at bottom, #8ab4f8, #000 80%); border-radius: 60px; box-shadow: 0 0 50px rgba(138, 180, 248, 0.4); transition: all 0.3s ease; }
         .blob.listening { background: radial-gradient(circle at bottom, #00ff88, #000 80%); box-shadow: 0 0 60px rgba(0, 255, 136, 0.6); animation: pulse 1.5s infinite alternate; }
         .blob.speaking { background: radial-gradient(circle at bottom, #8ab4f8, #000 80%); box-shadow: 0 0 80px rgba(138, 180, 248, 0.8); animation: speakPulse 0.5s infinite alternate; }
-        
         @keyframes pulse { 0% { transform: scale(1); } 100% { transform: scale(1.1); } }
         @keyframes speakPulse { 0% { transform: scale(1); border-radius: 60px; } 100% { transform: scale(1.15); border-radius: 40px; } }
-
         .controls { display: flex; gap: 20px; align-items: center; justify-content: center; width: 100%; z-index: 10; }
         .btn { background: #1a1a1a; border: 1px solid #333; color: #fff; width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; }
         .btn:active { transform: scale(0.9); }
@@ -40,7 +37,6 @@
         const micBtn = document.getElementById('mic-btn');
         const statusText = document.getElementById('status-text');
 
-        // ⚡ كتنادى من Android ⚡
         function startMic() {
             statusText.innerText = "جاري الاستماع...";
             micBtn.classList.add('recording');
@@ -48,12 +44,9 @@
             
             if (window.Android && window.Android.startListening) {
                 window.Android.startListening();
-            } else {
-                alert("يرجى تشغيل التطبيق للسماح بالميكروفون.");
             }
         }
 
-        // ⚡ كترجع من Android بالنص ⚡
         function handleVoiceResult(text) {
             micBtn.classList.remove('recording');
             blob.className = 'blob speaking';
@@ -67,34 +60,21 @@
                 const response = await fetch(url); 
                 const aiText = await response.text();
                 
-                speakText(aiText);
+                // ⚡ تشغيل الصوت من أندرويد ⚡
+                statusText.innerText = "جاري التحدث...";
+                if (window.Android && window.Android.speak) {
+                    window.Android.speak(aiText);
+                }
+                
+                // نرجعو الحالة للطبيعي بعد مدة تقريبية (حيت أندرويد ماكيعطيش إشارة ملي يسالي الكلام)
+                setTimeout(() => {
+                    blob.className = 'blob';
+                    statusText.innerText = "دق على الميكرو باش تهضر";
+                }, aiText.length * 100); 
+
             } catch (e) { 
                 statusText.innerText = "⚠️ وقع خطأ فـ الاتصال.";
                 blob.className = 'blob';
-            }
-        }
-
-        function speakText(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel(); 
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ar-MA'; 
-                
-                utterance.onstart = () => {
-                    blob.className = 'blob speaking';
-                    statusText.innerText = "جاري التحدث...";
-                };
-                
-                utterance.onend = () => {
-                    blob.className = 'blob';
-                    statusText.innerText = "دق على الميكرو باش تهضر";
-                };
-
-                const voices = window.speechSynthesis.getVoices();
-                const arabicVoice = voices.find(voice => voice.lang.includes('ar'));
-                if (arabicVoice) { utterance.voice = arabicVoice; }
-                
-                window.speechSynthesis.speak(utterance);
             }
         }
     </script>
