@@ -6,94 +6,18 @@
     <title>G vcam PRO - اشتراك مميز</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: radial-gradient(circle at top, #0a1f14, #000000);
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 24px;
-            padding: 40px 30px;
-            text-align: center;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 255, 136, 0.05);
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.3s ease;
-        }
-        .card:hover { transform: translateY(-5px); }
-        .card::before {
-            content: '';
-            position: absolute;
-            top: -50%; left: -50%;
-            width: 200%; height: 200%;
-            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 60%);
-            animation: rotate 10s linear infinite;
-            z-index: -1;
-        }
-        @keyframes rotate { 100% { transform: rotate(360deg); } }
-        
-        .logo { font-size: 50px; margin-bottom: 10px; animation: float 3s ease-in-out infinite; }
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-        
-        h1 {
-            font-size: 28px;
-            color: #00ff88;
-            text-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
-            margin-bottom: 10px;
-            font-weight: 800;
-        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: radial-gradient(circle at top, #0a1f14, #000); color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); border: 1px solid rgba(0, 255, 136, 0.2); border-radius: 24px; padding: 40px 30px; text-align: center; width: 100%; max-width: 420px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); }
+        .logo { font-size: 50px; margin-bottom: 10px; }
+        h1 { font-size: 28px; color: #00ff88; text-shadow: 0 0 15px rgba(0, 255, 136, 0.5); margin-bottom: 10px; font-weight: 800; }
         .subtitle { color: #a0a0a0; font-size: 14px; margin-bottom: 25px; }
-        
-        .features {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 25px;
-            text-align: right;
-        }
+        .features { background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 15px; margin-bottom: 25px; text-align: right; }
         .features li { list-style: none; margin-bottom: 10px; color: #e0e0e0; font-size: 14px; display: flex; align-items: center; }
         .features li::before { content: '✅'; margin-left: 8px; font-size: 12px; }
-        
-        .price {
-            font-size: 36px;
-            font-weight: 900;
-            color: #fff;
-            margin-bottom: 25px;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
-        }
+        .price { font-size: 36px; font-weight: 900; color: #fff; margin-bottom: 25px; }
         .price span { font-size: 16px; color: #00ff88; font-weight: normal; }
-        
-        input[type="submit"] {
-            background: linear-gradient(90deg, #00ff88, #00cc6a);
-            color: #000;
-            border: none;
-            padding: 16px 20px;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 50px;
-            width: 100%;
-            cursor: pointer;
-            transition: 0.3s ease;
-            box-shadow: 0 8px 20px rgba(0, 255, 136, 0.4);
-            font-family: inherit;
-        }
-        input[type="submit"]:hover {
-            transform: scale(1.03);
-            box-shadow: 0 10px 25px rgba(0, 255, 136, 0.6);
-            background: linear-gradient(90deg, #00cc6a, #00ff88);
-        }
-        .secure { margin-top: 15px; font-size: 12px; color: #666; display: flex; justify-content: center; align-items: center; gap: 5px; }
+        input[type="submit"] { background: linear-gradient(90deg, #00ff88, #00cc6a); color: #000; border: none; padding: 16px 20px; font-size: 18px; font-weight: bold; border-radius: 50px; width: 100%; cursor: pointer; transition: 0.3s; box-shadow: 0 8px 20px rgba(0, 255, 136, 0.4); }
+        .secure { margin-top: 15px; font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
@@ -101,31 +25,22 @@
         <div class="logo">🚀</div>
         <h1>G vcam PRO</h1>
         <p class="subtitle">النسخة الاحترافية مع جميع الميزات</p>
-        
         <ul class="features">
-            <li>فتح جميع الأدوات (Floating HUD, AI...)</li>
+            <li>فتح جميع الأدوات (HUD, AI...)</li>
             <li>الذكاء الاصطناعي المدمج</li>
-            <li>بدون إعلانات أو قيود</li>
             <li>تفعيل فوري لمدة 30 يوم</li>
         </ul>
-
-        <div class="price">
-            $5.00 <span>/ 30 يوم</span>
-        </div>
-        
+        <div class="price">$5.00 <span>/ 30 يوم</span></div>
         <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_blank">
             <input type="hidden" name="cmd" value="_xclick">
-            <!-- ⚠️ هنا بدل الإيميل ديالك ⚠️ -->
-            <input type="hidden" name="business" value="email@domain.com"> 
+            <input type="hidden" name="business" value="email@domain.com"> <!-- ⚠️ بدل الإيميل ديالك هنا -->
             <input type="hidden" name="item_name" value="G vcam Pro - 30 Days">
             <input type="hidden" name="amount" value="5.00">
             <input type="hidden" name="currency_code" value="USD">
             <input type="hidden" name="notify_url" value="https://ai-server-seven-mu.vercel.app/api/control?type=paypal_ipn">
             <input type="hidden" name="return" value="https://ai-server-seven-mu.vercel.app/success.html">
-            
             <input type="submit" value="💳 ادفع الآن بأمان">
         </form>
-        
         <div class="secure">🔒 دفع آمن ومشفر عبر PayPal</div>
     </div>
 </body>
