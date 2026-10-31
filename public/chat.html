@@ -16,19 +16,18 @@
         .controls { display: flex; gap: 20px; align-items: center; justify-content: center; width: 100%; z-index: 10; }
         .btn { background: #1a1a1a; border: 1px solid #333; color: #fff; width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; }
         .btn:active { transform: scale(0.9); }
-        .btn.active { background: #333; border-color: #555; }
-        .btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         .btn-mic { width: 65px; height: 65px; }
         .btn-mic.recording { background: #ff4444; border-color: #ff4444; animation: pulse 1s infinite; }
+        .btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
         #status-text { position: absolute; bottom: 120px; font-size: 14px; color: #888; text-align: center; }
     </style>
 </head>
 <body>
-    <div id="status-text">دق على الميكرو باش تهضر</div>
+    <div id="status-text">دق على الميكرو باش تبدا المحادثة</div>
     <div class="blob-container"><div class="blob" id="blob"></div></div>
     <div class="controls">
         <button class="btn" onclick="window.close()"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        <button class="btn btn-mic" id="mic-btn" onclick="startMic()"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></button>
+        <button class="btn btn-mic" id="mic-btn" onclick="toggleAutoListen()"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></button>
         <button class="btn" onclick="window.close()"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
 
@@ -37,8 +36,28 @@
         const micBtn = document.getElementById('mic-btn');
         const statusText = document.getElementById('status-text');
 
-        function startMic() {
-            statusText.innerText = "جاري الاستماع...";
+        let isAutoListening = false;
+        let isProcessing = false;
+
+        function toggleAutoListen() {
+            if (isAutoListening) {
+                // تسد المحادثة
+                isAutoListening = false;
+                micBtn.classList.remove('recording');
+                blob.className = 'blob';
+                statusText.innerText = "توقفت المحادثة. دق على الميكرو باش تعاود.";
+            } else {
+                // تبدا المحادثة
+                isAutoListening = true;
+                startListening();
+            }
+        }
+
+        function startListening() {
+            if (!isAutoListening) return;
+            if (isProcessing) return; 
+            
+            statusText.innerText = "جاري الاستماع... (هضر دابا)";
             micBtn.classList.add('recording');
             blob.className = 'blob listening';
             
@@ -55,26 +74,36 @@
         }
 
         async function sendToAI(text) {
+            isProcessing = true;
             try {
                 const url = `https://ai-server-seven-mu.vercel.app/api/control?type=ai&prompt=${encodeURIComponent(text)}`;
                 const response = await fetch(url); 
                 const aiText = await response.text();
                 
-                // ⚡ تشغيل الصوت من أندرويد ⚡
                 statusText.innerText = "جاري التحدث...";
                 if (window.Android && window.Android.speak) {
                     window.Android.speak(aiText);
                 }
                 
-                // نرجعو الحالة للطبيعي بعد مدة تقريبية (حيت أندرويد ماكيعطيش إشارة ملي يسالي الكلام)
+                // ⚡ حساب الوقت اللي غادي ياخدو الكلام (تقديرياً) ⚡
+                const waitTime = Math.max(2000, aiText.length * 120); 
+                
                 setTimeout(() => {
-                    blob.className = 'blob';
-                    statusText.innerText = "دق على الميكرو باش تهضر";
-                }, aiText.length * 100); 
+                    isProcessing = false;
+                    if (isAutoListening) {
+                        // ⚡ كيعاود يسمع أوتوماتيكياً ⚡
+                        startListening();
+                    } else {
+                        blob.className = 'blob';
+                        statusText.innerText = "دق على الميكرو باش تهضر";
+                    }
+                }, waitTime);
 
             } catch (e) { 
+                isProcessing = false;
                 statusText.innerText = "⚠️ وقع خطأ فـ الاتصال.";
                 blob.className = 'blob';
+                if(isAutoListening) setTimeout(startListening, 2000);
             }
         }
     </script>
