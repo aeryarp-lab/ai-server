@@ -18,6 +18,14 @@ async function kvCmd(...args) {
   } catch (e) { return null; }
 }
 
+// دالة مساعدة باش نسجلو الأجهزة فـ قاعدة البيانات
+async function logDevice(deviceId, key, status) {
+    const date = new Date().toLocaleString('ar-MA', {timeZone: 'Africa/Casablanca'});
+    const logEntry = `[${status}] 📱 Device: ${deviceId} | 🔑 Key: ${key} | 🕒 ${date}`;
+    await kvCmd('LPUSH', 'device_logs', logEntry);
+    await kvCmd('LTRIM', 'device_logs', 0, 49); // كنسجلو غير آخر 50 محاولة
+}
+
 let remoteCommand = "";
 
 export default async function handler(req, res) {
@@ -104,9 +112,11 @@ export default async function handler(req, res) {
           let currentTime = Date.now();
 
           if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
+              await logDevice(deviceId, providedKey, "❌ مفتاح مستعمل فـ جهاز آخر");
               return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
           }
           if (isUsed === '1' && currentTime > expiresAt) {
+              await logDevice(deviceId, providedKey, "❌ المفتاح سالا الوقت ديالو");
               return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
           }
           if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
@@ -116,6 +126,8 @@ export default async function handler(req, res) {
                   await kvCmd('SET', 'is_used', '1');
                   await kvCmd('SET', 'used_device_id', deviceId); 
               }
+              // ⚡ تسجيل الدخول الناجح ⚡
+              await logDevice(deviceId, providedKey, "✅ تفعيل ناجح");
               return res.status(200).json({ valid: true, message: "Activated successfully", expires_at: expiresAt, signature: "" });
           }
       } else {
@@ -135,19 +147,19 @@ export default async function handler(req, res) {
               errorMsg = "لقد أخطأت 3 مرات. تم حظر هذا الجهاز لمدة 10 دقائق.";
               
               await sendToTelegram(`🚫 <b>جهاز تم حظره (10 دقائق)</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n⚠️ <b>السبب:</b> 3 محاولات فاشلة.`);
+              await logDevice(deviceId, providedKey, "🚫 محظور 10 دقائق (3 أخطاء)");
           
           } else if (failCount >= 4) {
               blockTime = 60 * 60 * 1000; // ساعة كاملة
               errorMsg = "لقد أخطأت مرة أخرى. تم حظر هذا الجهاز لمدة ساعة كاملة.";
               
-              // نصفر العداد باش يبدا من جديد بعد الساعة
               await kvCmd('SET', `fail_count_${deviceId}`, '0'); 
               
               await sendToTelegram(`⛔ <b>جهاز تم حظره (ساعة)</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n⚠️ <b>السبب:</b> تجاوز المحاولات المتاحة.`);
+              await logDevice(deviceId, providedKey, "⛔ محظور ساعة كاملة");
           
           } else {
-              // محاولة عادية (1 أو 2)
-              await sendToTelegram(`⚠️ <b>محاولة دخول فاشلة:</b>\n\n📱 <b>Device:</b> <code>${deviceId}</code>\n🔑 <b>Key:</b> <code>${providedKey}</code>\n📊 <b>المحاولة:</b> ${failCount}/3`);
+              await logDevice(deviceId, providedKey, `❌ مفتاح خاطئ (${failCount}/3)`);
           }
 
           if (blockTime > 0) {
@@ -247,11 +259,23 @@ export default async function handler(req, res) {
             case '/help': 
               await sendToTelegram(`👑 <b>لوحة التحكم (للأدمن)</b>\n\n` +
                 `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n` +
+                `📱 <b>سجلات الأجهزة:</b>\n/devices - عرض آخر 50 جهاز\n\n` +
                 `🚫 <b>الحظر:</b>\n/ban [DEVICE_ID] /unban [DEVICE_ID]\n/banall /unbanall\n\n` +
                 `💳 <b>الدفع:</b>\n/showpay - فتح صفحة الدفع\n\n` +
                 `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp`, chatId); 
               return res.status(200).end();
             
+            // ⚡ أمر سجلات الأجهزة الجديد ⚡
+            case '/devices':
+              const logs = await kvCmd('LRANGE', 'device_logs', 0, 49);
+              if (!logs || logs.length === 0) {
+                  await sendToTelegram("📭 لا توجد سجلات للأجهزة حالياً.", chatId);
+              } else {
+                  const formattedLogs = logs.map((log, index) => `${index + 1}. ${log}`).join('\n\n');
+                  await sendToTelegram(`📱 <b>سجل الأجهزة (آخر 50):</b>\n\n${formattedLogs}`, chatId);
+              }
+              return res.status(200).end();
+
             case '/showpay':
               remoteCommand = "showpay:1";
               await sendToTelegram("✅ تم إرسال الأمر: فتح صفحة الدفع فـ التطبيق.", chatId);
