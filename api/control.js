@@ -1,6 +1,6 @@
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = "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";
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
