@@ -3,51 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Chat</title>
+    <title>AI Voice Mode</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        body { background-color: #0f1712; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        #chat-box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-        .message { max-width: 80%; padding: 12px 16px; border-radius: 15px; font-size: 15px; line-height: 1.5; word-wrap: break-word; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .user-msg { align-self: flex-end; background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; border-bottom-left-radius: 5px; font-weight: bold; }
-        .ai-msg { align-self: flex-start; background: #1e2b24; color: #e0e0e0; border-bottom-right-radius: 5px; border: 1px solid #2a3f33; }
-        .input-area { display: flex; padding: 10px; background: #15221b; border-top: 1px solid #2a3f33; gap: 10px; }
-        input { flex: 1; padding: 12px 15px; border-radius: 25px; border: 1px solid #3a5a47; background: #0a110d; color: #fff; font-size: 16px; outline: none; }
-        input:focus { border-color: #00ff88; }
-        button { background: #00ff88; color: #000; border: none; width: 45px; height: 45px; border-radius: 50%; font-size: 20px; cursor: pointer; display: flex; justify-content: center; align-items: center; }
-        button:active { transform: scale(0.95); }
-        .typing { font-size: 12px; color: #888; margin-top: 5px; display: none; text-align: center; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        
+        body { 
+            background: radial-gradient(circle at 50% 100%, #0a1f44, #020813 70%); 
+            color: #fff; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100dvh; 
+            overflow: hidden; 
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 40px;
+        }
+
+        /* الدائرة اللي كتدور فـ الوسط */
+        .blob-container {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .blob {
+            width: 180px;
+            height: 110px;
+            background: radial-gradient(circle at bottom, #8ab4f8, #000 80%);
+            border-radius: 60px;
+            box-shadow: 0 0 50px rgba(138, 180, 248, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        /* تأثيرات الحالة */
+        .blob.listening {
+            background: radial-gradient(circle at bottom, #00ff88, #000 80%);
+            box-shadow: 0 0 60px rgba(0, 255, 136, 0.6);
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        .blob.speaking {
+            background: radial-gradient(circle at bottom, #8ab4f8, #000 80%);
+            box-shadow: 0 0 80px rgba(138, 180, 248, 0.8);
+            animation: speakPulse 0.5s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+
+        @keyframes speakPulse {
+            0% { transform: scale(1); border-radius: 60px; }
+            100% { transform: scale(1.15); border-radius: 40px; }
+        }
+
+        /* أزرار التحكم */
+        .controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            z-index: 10;
+        }
+
+        .btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #fff;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .btn:active { transform: scale(0.9); }
+        .btn.active { background: #333; border-color: #555; }
+        
+        .btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        
+        .btn-mic { width: 65px; height: 65px; }
+        .btn-mic.recording { background: #ff4444; border-color: #ff4444; animation: pulse 1s infinite; }
+
+        /* النص المخفي */
+        #status-text {
+            position: absolute;
+            bottom: 120px;
+            font-size: 14px;
+            color: #888;
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
-    <div id="chat-box">
-        <div class="message ai-msg">أهلاً بك! أنا الذكاء الاصطناعي ديالك. كيفاش نقدر نعاونك اليوم؟ 😊</div>
+
+    <div id="status-text">دق على الميكرو باش تهضر</div>
+
+    <div class="blob-container">
+        <div class="blob" id="blob"></div>
     </div>
-    <div class="typing" id="typing">جاري الكتابة...</div>
-    <div class="input-area">
-        <input type="text" id="user-input" placeholder="اكتب رسالتك هنا..." autocomplete="off">
-        <button onclick="sendMessage()">➤</button>
+
+    <div class="controls">
+        <!-- زر الإغلاق -->
+        <button class="btn" onclick="window.close()">
+            <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+
+        <!-- زر الميكرو -->
+        <button class="btn btn-mic" id="mic-btn" onclick="toggleMic()">
+            <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+        </button>
+
+        <!-- زر الإرسال (اختياري) -->
+        <button class="btn" id="send-btn" onclick="stopAndSend()">
+            <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
     </div>
+
     <script>
-        const chatBox = document.getElementById('chat-box');
-        const userInput = document.getElementById('user-input');
-        const typingIndicator = document.getElementById('typing');
-        function addMessage(text, isUser) {
-            const div = document.createElement('div');
-            div.className = 'message ' + (isUser ? 'user-msg' : 'ai-msg');
-            div.innerText = text; chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
+        const blob = document.getElementById('blob');
+        const micBtn = document.getElementById('mic-btn');
+        const statusText = document.getElementById('status-text');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ar-MA';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = function() {
+                isRecording = true;
+                micBtn.classList.add('recording');
+                blob.className = 'blob listening';
+                statusText.innerText = "جاري الاستماع...";
+            };
+
+            recognition.onresult = function(event) {
+                const text = event.results[0][0].transcript;
+                processUserText(text);
+            };
+
+            recognition.onerror = function(event) {
+                stopRecordingState();
+                statusText.innerText = "ماتسمعش مزيان، عاود جرب.";
+            };
+
+            recognition.onend = function() {
+                if (isRecording) {
+                    stopRecordingState();
+                    blob.className = 'blob speaking';
+                }
+            };
+        } else {
+            statusText.innerText = "المتصفح مكيدعمش الميكرو.";
+            micBtn.disabled = true;
         }
-        async function sendMessage() {
-            const text = userInput.value.trim(); if (!text) return;
-            addMessage(text, true); userInput.value = ''; typingIndicator.style.display = 'block'; chatBox.scrollTop = chatBox.scrollHeight;
+
+        function toggleMic() {
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                window.speechSynthesis.cancel(); // وقف أي صوت خدام
+                recognition.start();
+            }
+        }
+
+        function stopRecordingState() {
+            isRecording = false;
+            micBtn.classList.remove('recording');
+            blob.className = 'blob';
+        }
+
+        function stopAndSend() {
+            if (isRecording) recognition.stop();
+        }
+
+        async function processUserText(text) {
+            statusText.innerText = "جاري التفكير...";
+            blob.className = 'blob speaking'; // مؤقتا
+            
             try {
                 const url = `https://ai-server-seven-mu.vercel.app/api/control?type=ai&prompt=${encodeURIComponent(text)}`;
-                const response = await fetch(url); const aiText = await response.text();
-                typingIndicator.style.display = 'none'; addMessage(aiText, false);
-            } catch (e) { typingIndicator.style.display = 'none'; addMessage("⚠️ وقع خطأ فـ الاتصال.", false); }
+                const response = await fetch(url); 
+                const aiText = await response.text();
+                
+                speakText(aiText);
+            } catch (e) { 
+                statusText.innerText = "⚠️ وقع خطأ فـ الاتصال.";
+                blob.className = 'blob';
+            }
         }
-        userInput.addEventListener("keypress", function(event) { if (event.key === "Enter") { event.preventDefault(); sendMessage(); } });
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); 
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ar-MA'; 
+                utterance.rate = 1.0;
+                
+                utterance.onstart = () => {
+                    blob.className = 'blob speaking';
+                    statusText.innerText = "جاري التحدث...";
+                };
+                
+                utterance.onend = () => {
+                    blob.className = 'blob';
+                    statusText.innerText = "دق على الميكرو باش تهضر";
+                };
+
+                const voices = window.speechSynthesis.getVoices();
+                const arabicVoice = voices.find(voice => voice.lang.includes('ar'));
+                if (arabicVoice) { utterance.voice = arabicVoice; }
+                
+                window.speechSynthesis.speak(utterance);
+            }
+        }
     </script>
 </body>
 </html>
