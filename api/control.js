@@ -45,7 +45,10 @@ export default async function handler(req, res) {
               headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
                   model: "openai/gpt-oss-20b", 
-                  messages: [{ role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." }, { role: "user", content: prompt }],
+                  messages: [
+                      { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." },
+                      { role: "user", content: prompt }
+                  ],
                   temperature: 0.7
               })
           });
@@ -57,19 +60,37 @@ export default async function handler(req, res) {
 
   // 2. LICENSE CHECK
   if (req.method === 'POST' && req.body && req.body.p_key) {
+      
+      const forceUpdate = await kvCmd('GET', 'force_update');
+      if (forceUpdate === '1') {
+          return res.status(200).json({ valid: false, message: "تم إيقاف هذا الإصدار. المرجو تثبيت النسخة الجديدة.", expires_at: 0, signature: "" });
+      }
+
+      const customMessage = await kvCmd('GET', 'system_message');
+      if (customMessage) {
+          return res.status(200).json({ valid: false, message: customMessage, expires_at: 0, signature: "" });
+      }
+
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
-      let blockUntil = await kvCmd('GET', `block_until_${deviceId}`);
-      if (blockUntil && Date.now() < parseInt(blockUntil)) {
-          const minsLeft = Math.ceil((parseInt(blockUntil) - Date.now()) / 60000);
-          return res.status(200).json({ valid: false, message: `⛔ محظور مؤقتاً. المرجو الانتظار ${minsLeft} دقيقة.`, expires_at: 0, signature: "" });
+      // ⚡ فحص واش نظام الحظر مطفي من تيليجرام ⚡
+      const banSystemDisabled = await kvCmd('GET', 'ban_system_disabled');
+
+      if (banSystemDisabled !== '1') {
+          // نظام الحظر خدام
+          let blockUntil = await kvCmd('GET', `block_until_${deviceId}`);
+          if (blockUntil && Date.now() < parseInt(blockUntil)) {
+              const minsLeft = Math.ceil((parseInt(blockUntil) - Date.now()) / 60000);
+              return res.status(200).json({ valid: false, message: `⛔ محظور مؤقتاً. المرجو الانتظار ${minsLeft} دقيقة.`, expires_at: 0, signature: "" });
+          }
       }
 
       const isBannedAll = await kvCmd('GET', 'ban_all');
-      if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "All devices are banned.", expires_at: 0, signature: "" });
+      if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "تم حظر جميع الأجهزة من طرف الإدارة.", expires_at: 0, signature: "" });
+      
       const isDeviceBanned = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
-      if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "This device is banned.", expires_at: 0, signature: "" });
+      if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "هذا الجهاز محظور من طرف الإدارة.", expires_at: 0, signature: "" });
 
       let savedKey = await kvCmd('GET', 'app_secret_key');
       let durationStr = await kvCmd('GET', 'key_duration');
@@ -83,8 +104,6 @@ export default async function handler(req, res) {
       const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
       if (providedKey === savedKey && isDeviceAllowed) {
-          await kvCmd('DEL', `fail_count_${deviceId}`);
-          await kvCmd('DEL', `block_until_${deviceId}`);
           let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
           let currentTime = Date.now();
 
@@ -107,28 +126,8 @@ export default async function handler(req, res) {
               return res.status(200).json({ valid: true, message: "Activated successfully", expires_at: expiresAt, signature: "" });
           }
       } else {
-          let failCount = await kvCmd('GET', `fail_count_${deviceId}`);
-          failCount = failCount ? parseInt(failCount) : 0;
-          failCount++;
-          await kvCmd('SET', `fail_count_${deviceId}`, failCount.toString());
-          await kvCmd('EXPIRE', `fail_count_${deviceId}`, 86400);
-          let blockTime = 0; let errorMsg = "Invalid license key";
-
-          if (failCount === 3) {
-              blockTime = 10 * 60 * 1000; errorMsg = "لقد أخطأت 3 مرات. تم الحظر لمدة 10 دقائق.";
-              await logDevice(deviceId, providedKey, "🚫 محظور 10 دقائق");
-          } else if (failCount >= 4) {
-              blockTime = 60 * 60 * 1000; errorMsg = "لقد أخطأت مرة أخرى. تم الحظر لمدة ساعة.";
-              await kvCmd('SET', `fail_count_${deviceId}`, '0'); 
-              await logDevice(deviceId, providedKey, "⛔ محظور ساعة");
-          } else {
-              await logDevice(deviceId, providedKey, `❌ مفتاح خاطئ (${failCount}/3)`);
-          }
-          if (blockTime > 0) {
-              await kvCmd('SET', `block_until_${deviceId}`, (Date.now() + blockTime).toString());
-              await kvCmd('EXPIRE', `block_until_${deviceId}`, blockTime / 1000);
-          }
-          return res.status(200).json({ valid: false, message: errorMsg, expires_at: 0, signature: "" });
+          await logDevice(deviceId, providedKey, "❌ مفتاح خاطئ");
+          return res.status(200).json({ valid: false, message: "Invalid license key", expires_at: 0, signature: "" });
       }
   }
 
@@ -175,6 +174,10 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'command') {
+      const forceUpdate = await kvCmd('GET', 'force_update');
+      if (forceUpdate === '1') {
+          return res.status(200).send('"forceupdate:1"');
+      }
       const cmd = remoteCommand; remoteCommand = ""; 
       return res.status(200).send(`"${cmd}"`);
     }
@@ -191,21 +194,22 @@ export default async function handler(req, res) {
           if (body.callback_query.data === 'hud') { remoteCommand = "hud_on:1"; await sendToTelegram("✅ تشغيل HUD 🚀", chatId); }
           return res.status(200).end();
       }
-      
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/); const command = args[0].toLowerCase();
           switch (command) {
             case '/start': case '/menu': 
               await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
               return res.status(200).end();
-            case '/help':
+            case '/help': 
               await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
-                `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n` +
+                `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n/addtime [MIN]\n\n` +
                 `📱 <b>سجلات:</b>\n/devices\n\n` +
-                `🚫 <b>الحظر:</b>\n/ban /unban /banall /unbanall\n\n` +
+                `🚫 <b>الحظر:</b>\n/disableban - إيقاف الحظر نهائياً\n/enableban - تشغيل الحظر\n/unban /ban\n/banall /unbanall\n\n` +
+                `💬 <b>رسالة مخصصة:</b>\n/setmsg [TEXT]\n/clearmessage\n\n` +
                 `💳 <b>الدفع:</b>\n/showpay\n\n` +
                 `💬 <b>الذكاء الاصطناعي:</b>\n/chat\n\n` +
-                `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp`, chatId);
+                `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp\n\n` +
+                `🛠️ <b>التحديث:</b>\n/forceupdate\n/stopupdate`, chatId);
               return res.status(200).end();
             case '/devices':
               const logs = await kvCmd('LRANGE', 'device_logs', 0, 49);
@@ -220,21 +224,50 @@ export default async function handler(req, res) {
               remoteCommand = "showchat:1";
               await sendToTelegram("🤖 فتح الشات.", chatId);
               return res.status(200).end();
-            case '/setkey':
+            
+            // ⚡ أوامر التحكم فـ نظام الحظر (جديد) ⚡
+            case '/disableban':
+              await kvCmd('SET', 'ban_system_disabled', '1');
+              await sendToTelegram("✅ <b>تم إيقاف نظام الحظر نهائياً.</b>\nدابا حتى إلا غلط أي واحد 100 مرة، ماغاديش يتحظر.", chatId);
+              return res.status(200).end();
+
+            case '/enableban':
+              await kvCmd('DEL', 'ban_system_disabled');
+              await sendToTelegram("✅ <b>تم تشغيل نظام الحظر من جديد.</b>", chatId);
+              return res.status(200).end();
+
+            case '/setmsg':
+              if(args.length > 1) {
+                  const customMsg = args.slice(1).join(' ');
+                  await kvCmd('SET', 'system_message', customMsg);
+                  await sendToTelegram(`✅ <b>تم تفعيل الرسالة الحمراء:</b>\n\n${customMsg}`, chatId);
+              } else {
+                  await sendToTelegram("⚠️ استعمل: <code>/setmsg التطبيق تحت الصيانة</code>", chatId);
+              }
+              return res.status(200).end();
+
+            case '/clearmessage':
+              await kvCmd('DEL', 'system_message');
+              await sendToTelegram("✅ <b>تم مسح الرسالة الحمراء. التطبيق يرجع للعمل العادي.</b>", chatId);
+              return res.status(200).end();
+
+            case '/forceupdate':
+              await kvCmd('SET', 'force_update', '1');
+              await sendToTelegram("🛠️ <b>تم إجبار التحديث!</b>", chatId);
+              return res.status(200).end();
+            case '/stopupdate':
+              await kvCmd('DEL', 'force_update');
+              await sendToTelegram("✅ <b>تم إيقاف التحديث الإجباري.</b>", chatId);
+              return res.status(200).end();
+            
+            case '/unban': 
               if(args[1]) { 
-                await kvCmd('SET', 'app_secret_key', args[1]); await kvCmd('SET', 'key_duration', args[2] ? parseInt(args[2]) : 5);
-                await kvCmd('SET', 'is_used', '0'); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'allowed_device'); await kvCmd('DEL', 'used_device_id');
-                await sendToTelegram(`✅ <b>كود جديد:</b> <code>${args[1]}</code>`, chatId); 
-              } return res.status(200).end();
-            case '/genkey':
-              if(args[1] && args[2]) {
-                const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-                await kvCmd('SET', 'app_secret_key', newKey); await kvCmd('SET', 'key_duration', parseInt(args[2]));
-                await kvCmd('SET', 'is_used', '0'); await kvCmd('SET', 'allowed_device', args[1]); await kvCmd('DEL', 'active_expiry'); await kvCmd('DEL', 'used_device_id');
-                await sendToTelegram(`⏱️ <b>مفتاح مخصص:</b>\n🔑 <code>${newKey}</code>\n📱 <code>${args[1]}</code>`, chatId);
+                await kvCmd('SREM', 'banned_devices', args[1]); 
+                await kvCmd('DEL', `block_until_${args[1]}`); 
+                await kvCmd('DEL', `fail_count_${args[1]}`); 
+                await sendToTelegram(`✅ <b>تم إلغاء حظر الجهاز:</b> <code>${args[1]}</code>`, chatId); 
               } return res.status(200).end();
             case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`🚫 حظر: ${args[1]}`, chatId); } return res.status(200).end();
-            case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ إلغاء حظر: ${args[1]}`, chatId); } return res.status(200).end();
             case '/banall': await kvCmd('SET', 'ban_all', '1'); await sendToTelegram("🚫 حظر الجميع!", chatId); return res.status(200).end();
             case '/unbanall': await kvCmd('DEL', 'ban_all'); await kvCmd('DEL', 'banned_devices'); await sendToTelegram("✅ إلغاء حظر الجميع.", chatId); return res.status(200).end();
             case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ تم الإرسال.", chatId); } return res.status(200).end();
