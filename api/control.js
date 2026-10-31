@@ -1,6 +1,8 @@
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
-const GROQ_API_KEY = "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";
+
+// ⚡ المفتاح ديالك اللي صيفطتي ⚡
+const OPENAI_API_KEY = "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";
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -35,27 +37,46 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   const type = req.query.type;
 
-  // 1. AI CHAT
+  // ==========================================
+  // ⚡ 1. بلوك الذكاء الاصطناعي (OpenAI - ChatGPT) ⚡
+  // ==========================================
   if (type === 'ai' && req.query.prompt) {
       try {
           const prompt = req.query.prompt;
           if (!prompt || prompt.trim() === "") return res.status(200).send("السؤال خاوي.");
-          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          
+          const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
               method: "POST",
-              headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+              headers: { 
+                  "Authorization": `Bearer ${OPENAI_API_KEY}`, 
+                  "Content-Type": "application/json" 
+              },
               body: JSON.stringify({
-                  model: "openai/gpt-oss-20b", 
-                  messages: [{ role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة." }, { role: "user", content: prompt }],
+                  model: "gpt-4o-mini", // موديل سريع ورخيص
+                  messages: [
+                      { role: "system", content: "أنت مساعد ذكي، تجاوب بالدارجة المغربية. تجاوب بجملة قصيرة ومفيدة." },
+                      { role: "user", content: prompt }
+                  ],
                   temperature: 0.7
               })
           });
-          const data = await groqRes.json();
-          if (data.error) return res.status(200).send("خطأ: " + data.error.message);
+          
+          const data = await openaiRes.json();
+          
+          // إلا كان خطأ من OpenAI (بحال مافيا فلوس ولا مفتاح خايب) غادي يبينو ليك
+          if (data.error) {
+              return res.status(200).send("خطأ OpenAI: " + data.error.message);
+          }
+          
           return res.status(200).send((data?.choices?.[0]?.message?.content || "ماكانش جواب.").trim());
-      } catch (e) { return res.status(200).send("خطأ فـ الاتصال."); }
+      } catch (e) { 
+          return res.status(200).send("خطأ فـ الاتصال."); 
+      }
   }
 
-  // 2. LICENSE CHECK
+  // ==========================================
+  // ⚡ 2. التحقق من التفعيل (G vcam) ⚡
+  // ==========================================
   if (req.method === 'POST' && req.body && req.body.p_key) {
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
@@ -132,7 +153,9 @@ export default async function handler(req, res) {
       }
   }
 
-  // 3. PAYPAL
+  // ==========================================
+  // ⚡ 3. الدفع عبر PayPal ⚡
+  // ==========================================
   if (req.method === 'POST' && type === 'paypal_ipn') {
       let body = '';
       req.on('data', chunk => { body += chunk.toString(); });
@@ -144,10 +167,12 @@ export default async function handler(req, res) {
                   const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
                   await kvCmd('SET', `paypal_key_${txnId}`, newKey);
                   await kvCmd('EXPIRE', `paypal_key_${txnId}`, 86400);
+                  
                   await kvCmd('SET', 'app_secret_key', newKey);
                   await kvCmd('SET', 'key_duration', 43200); 
                   await kvCmd('SET', 'is_used', '0');
                   await kvCmd('DEL', 'active_expiry');
+                  
                   await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: `💰 دفعة جديدة!\nالمفتاح: ${newKey}` })
@@ -163,7 +188,9 @@ export default async function handler(req, res) {
       return key ? res.status(200).json({ success: true, key }) : res.status(200).json({ success: false });
   }
 
-  // 4. TELEGRAM BOT
+  // ==========================================
+  // ⚡ 4. أوامر تيليجرام ⚡
+  // ==========================================
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID) => {
     if (TELEGRAM_TOKEN && chatId) {
       await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
@@ -191,21 +218,11 @@ export default async function handler(req, res) {
           if (body.callback_query.data === 'hud') { remoteCommand = "hud_on:1"; await sendToTelegram("✅ تشغيل HUD 🚀", chatId); }
           return res.status(200).end();
       }
-      
       if (chatId === TELEGRAM_CHAT_ID && text.startsWith('/')) {
           const args = text.trim().split(/\s+/); const command = args[0].toLowerCase();
           switch (command) {
             case '/start': case '/menu': 
               await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
-              return res.status(200).end();
-            case '/help':
-              await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
-                `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n\n` +
-                `📱 <b>سجلات:</b>\n/devices\n\n` +
-                `🚫 <b>الحظر:</b>\n/ban /unban /banall /unbanall\n\n` +
-                `💳 <b>الدفع:</b>\n/showpay\n\n` +
-                `💬 <b>الذكاء الاصطناعي:</b>\n/chat\n\n` +
-                `💀 <b>التحكم:</b>\n/cmd [msg] /url [link] /killapp`, chatId);
               return res.status(200).end();
             case '/devices':
               const logs = await kvCmd('LRANGE', 'device_logs', 0, 49);
@@ -247,9 +264,9 @@ export default async function handler(req, res) {
       if (text === '/start') { await sendToTelegram("أهلاً بك! 👋 أنا مساعد ذكي.", chatId); return res.status(200).end(); }
       if (text && !text.startsWith('/')) {
           try {
-              const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                  method: "POST", headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ model: "openai/gpt-oss-20b", messages: [{ role: "system", content: "أنت مساعد ذكي بالدارجة المغربية." }, { role: "user", content: text }], temperature: 0.7 })
+              const groqRes = await fetch("https://api.openai.com/v1/chat/completions", {
+                  method: "POST", headers: { "Authorization": `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "system", content: "أنت مساعد ذكي بالدارجة المغربية." }, { role: "user", content: text }], temperature: 0.7 })
               });
               const data = await groqRes.json();
               if (data.error) await sendToTelegram("⚠️ خطأ: " + data.error.message, chatId);
