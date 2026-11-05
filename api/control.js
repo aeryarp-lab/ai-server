@@ -187,6 +187,58 @@ export default async function handler(req, res) {
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
+      // --- 📸 قراءة وتحليل الصور 📸 ---
+      if (msg.photo) {
+          try {
+              // خد أعلى جودة ديال الصورة
+              const fileId = msg.photo[msg.photo.length - 1].file_id;
+              
+              // جيب مسار الصورة من تيليجرام
+              const fileRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
+              const fileData = await fileRes.json();
+              
+              if (fileData.ok) {
+                  const filePath = fileData.result.file_path;
+                  // تحميل الصورة
+                  const imgRes = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`);
+                  const arrayBuffer = await imgRes.arrayBuffer();
+                  const base64Image = Buffer.from(arrayBuffer).toString('base64');
+                  
+                  await sendToTelegram("⏳ جاري تحليل الصورة بالذكاء الاصطناعي...", chatId);
+                  
+                  // إرسال الصورة للـ Vision AI عند Groq
+                  const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                      method: "POST", 
+                      headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                          model: "llama-3.2-90b-vision-preview", // موديل كيقرا التصاور
+                          messages: [
+                              { 
+                                  role: "user", 
+                                  content: [
+                                      { type: "text", text: "أنت خبير تحليل مباريات ورهانات. حلل هذه الصورة وأعطني النتيجة النهائية المتوقعة (النتيجة الصحيحة) وشرح موجز بالدارجة المغربية." },
+                                      { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                                  ]
+                              }
+                          ],
+                          temperature: 0.5,
+                          max_tokens: 1024
+                      })
+                  });
+                  
+                  const aiData = await groqRes.json();
+                  if (aiData.error) await sendToTelegram("⚠️ خطأ: " + aiData.error.message, chatId);
+                  else await sendToTelegram((aiData?.choices?.[0]?.message?.content || "سمح ليا، ماقدرتش نحلل الصورة.").trim(), chatId);
+                  
+                  return res.status(200).end();
+              }
+          } catch (e) {
+              await sendToTelegram("⚠️ وقع خطأ أثناء قراءة الصورة.", chatId);
+              return res.status(200).end();
+          }
+      }
+      // -----------------------------
+
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
           if (body.callback_query.data === 'hud') { remoteCommand = "hud_on:1"; await sendToTelegram("✅ تشغيل HUD 🚀", chatId); }
@@ -196,10 +248,11 @@ export default async function handler(req, res) {
           const args = text.trim().split(/\s+/); const command = args[0].toLowerCase();
           switch (command) {
             case '/start': case '/menu': 
-              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
+              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\n\n📸 <b>ميزة جديدة:</b> صيفط ليا أي تصويرة ديال الماتش وأنا غادي نحللها ليك ونعطيك النتيجة!", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
               return res.status(200).end();
             case '/help': 
               await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
+                `📸 <b>تحليل الصور:</b> صيفط أي تصويرة وسيتم تحليلها.\n\n` +
                 `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n/addtime [MIN]\n\n` +
                 `📱 <b>سجلات:</b>\n/devices\n\n` +
                 `🚫 <b>الحظر:</b>\n/disableban - إيقاف الحظر نهائياً\n/enableban - تشغيل الحظر\n/unban /ban\n/banall /unbanall\n\n` +
@@ -278,8 +331,6 @@ export default async function handler(req, res) {
               await kvCmd('DEL', 'banned_devices'); 
               await sendToTelegram("✅ إلغاء حظر الجميع.", chatId); 
               return res.status(200).end();
-            
-            // ⚡ هنا صلحنا المشكل ديال /setkey ⚡
             case '/setkey':
               if(args[1]) { 
                 await kvCmd('SET', 'app_secret_key', args[1]); 
@@ -293,8 +344,6 @@ export default async function handler(req, res) {
                 await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
               } 
               return res.status(200).end();
-
-            // ⚡ هنا صلحنا المشكل ديال /genkey ⚡
             case '/genkey':
               if(args[1] && args[2]) {
                 const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -309,7 +358,6 @@ export default async function handler(req, res) {
                 await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>\n(عوض الرقم بالجهاز والمدة بالدقايق)", chatId);
               } 
               return res.status(200).end();
-            
             case '/cmd': 
               if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ تم الإرسال.", chatId); } 
               return res.status(200).end();
