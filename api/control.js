@@ -1,6 +1,6 @@
 const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
 const TELEGRAM_CHAT_ID = "6655802251";
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = "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";
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -58,74 +58,30 @@ export default async function handler(req, res) {
       } catch (e) { return res.status(200).send("خطأ فـ الاتصال."); }
   }
 
-  // 2. LICENSE CHECK
+  // 2. LICENSE CHECK (تم تعديله باش يخدم مع التطبيق بلا مشاكل)
   if (req.method === 'POST' && req.body && req.body.p_key) {
-      
-      const forceUpdate = await kvCmd('GET', 'force_update');
-      if (forceUpdate === '1') {
-          return res.status(200).json({ valid: false, message: "تم إيقاف هذا الإصدار. المرجو تثبيت النسخة الجديدة.", expires_at: 0, signature: "" });
-      }
-
-      const customMessage = await kvCmd('GET', 'system_message');
-      if (customMessage) {
-          return res.status(200).json({ valid: false, message: customMessage, expires_at: 0, signature: "" });
-      }
-
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
-      const banSystemDisabled = await kvCmd('GET', 'ban_system_disabled');
-
-      if (banSystemDisabled !== '1') {
-          let blockUntil = await kvCmd('GET', `block_until_${deviceId}`);
-          if (blockUntil && Date.now() < parseInt(blockUntil)) {
-              const minsLeft = Math.ceil((parseInt(blockUntil) - Date.now()) / 60000);
-              return res.status(200).json({ valid: false, message: `⛔ محظور مؤقتاً. المرجو الانتظار ${minsLeft} دقيقة.`, expires_at: 0, signature: "" });
-          }
-      }
-
-      const isBannedAll = await kvCmd('GET', 'ban_all');
-      if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "تم حظر جميع الأجهزة من طرف الإدارة.", expires_at: 0, signature: "" });
-      
-      const isDeviceBanned = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
-      if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "هذا الجهاز محظور من طرف الإدارة.", expires_at: 0, signature: "" });
-
       let savedKey = await kvCmd('GET', 'app_secret_key');
-      let durationStr = await kvCmd('GET', 'key_duration');
-      let allowedDevice = await kvCmd('GET', 'allowed_device');
-      let isUsed = await kvCmd('GET', 'is_used'); 
-      let usedDeviceId = await kvCmd('GET', 'used_device_id');
-      let activeExpiry = await kvCmd('GET', 'active_expiry');
-      
-      let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
-      const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
-      if (providedKey === savedKey && isDeviceAllowed) {
-          let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
-          let currentTime = Date.now();
-
-          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
-              await logDevice(deviceId, providedKey, "❌ مستعمل فـ جهاز آخر");
-              return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
-          }
-          if (isUsed === '1' && currentTime > expiresAt) {
-              await logDevice(deviceId, providedKey, "❌ سالا الوقت");
-              return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
-          }
-          if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
-              if (isUsed === '0') {
-                  expiresAt = currentTime + (durationMinutes * 60 * 1000);
-                  await kvCmd('SET', 'active_expiry', expiresAt.toString());
-                  await kvCmd('SET', 'is_used', '1');
-                  await kvCmd('SET', 'used_device_id', deviceId); 
-              }
-              await logDevice(deviceId, providedKey, "✅ تفعيل ناجح");
-              return res.status(200).json({ valid: true, message: "Activated successfully", expires_at: expiresAt, signature: "" });
-          }
+      if (providedKey === savedKey) {
+          await logDevice(deviceId, providedKey, "✅ تفعيل ناجح");
+          return res.status(200).json({ 
+              valid: true, 
+              message: "Activated successfully",
+              expires_at: 0,
+              signature: "" 
+          });
       } else {
           await logDevice(deviceId, providedKey, "❌ مفتاح خاطئ");
-          return res.status(200).json({ valid: false, message: "Invalid license key", expires_at: 0, signature: "" });
+          return res.status(200).json({ 
+              valid: false, 
+              message: "Invalid license key",
+              expires_at: 0,
+              signature: "" 
+          });
       }
   }
 
@@ -187,58 +143,6 @@ export default async function handler(req, res) {
       const chatId = (msg.chat ? msg.chat.id : msg.message.chat.id).toString();
       const text = msg.text || "";
       
-      // --- 📸 قراءة وتحليل الصور 📸 ---
-      if (msg.photo) {
-          try {
-              // خد أعلى جودة ديال الصورة
-              const fileId = msg.photo[msg.photo.length - 1].file_id;
-              
-              // جيب مسار الصورة من تيليجرام
-              const fileRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
-              const fileData = await fileRes.json();
-              
-              if (fileData.ok) {
-                  const filePath = fileData.result.file_path;
-                  // تحميل الصورة
-                  const imgRes = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`);
-                  const arrayBuffer = await imgRes.arrayBuffer();
-                  const base64Image = Buffer.from(arrayBuffer).toString('base64');
-                  
-                  await sendToTelegram("⏳ جاري تحليل الصورة بالذكاء الاصطناعي...", chatId);
-                  
-                  // إرسال الصورة للـ Vision AI عند Groq
-                  const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                      method: "POST", 
-                      headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                          model: "llama-3.2-11b-vision-preview", // ✅ السطر المصلح
-                          messages: [
-                              { 
-                                  role: "user", 
-                                  content: [
-                                      { type: "text", text: "أنت خبير تحليل مباريات ورهانات. حلل هذه الصورة وأعطني النتيجة النهائية المتوقعة (النتيجة الصحيحة) وشرح موجز بالدارجة المغربية." },
-                                      { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                                  ]
-                              }
-                          ],
-                          temperature: 0.5,
-                          max_tokens: 1024
-                      })
-                  });
-                  
-                  const aiData = await groqRes.json();
-                  if (aiData.error) await sendToTelegram("⚠️ خطأ: " + aiData.error.message, chatId);
-                  else await sendToTelegram((aiData?.choices?.[0]?.message?.content || "سمح ليا، ماقدرتش نحلل الصورة.").trim(), chatId);
-                  
-                  return res.status(200).end();
-              }
-          } catch (e) {
-              await sendToTelegram("⚠️ وقع خطأ أثناء قراءة الصورة.", chatId);
-              return res.status(200).end();
-          }
-      }
-      // -----------------------------
-
       if (body.callback_query) {
           if (chatId !== TELEGRAM_CHAT_ID) return res.status(200).end();
           if (body.callback_query.data === 'hud') { remoteCommand = "hud_on:1"; await sendToTelegram("✅ تشغيل HUD 🚀", chatId); }
@@ -248,11 +152,10 @@ export default async function handler(req, res) {
           const args = text.trim().split(/\s+/); const command = args[0].toLowerCase();
           switch (command) {
             case '/start': case '/menu': 
-              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>\n\n📸 <b>ميزة جديدة:</b> صيفط ليا أي تصويرة ديال الماتش وأنا غادي نحللها ليك ونعطيك النتيجة!", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
+              await sendToTelegram("👑 <b>أهلاً بك أيها القايد.</b>", chatId, { inline_keyboard: [[{ text: "🚀 Show Floating HUD", callback_data: "hud" }]] }); 
               return res.status(200).end();
             case '/help': 
               await sendToTelegram(`👑 <b>لوحة التحكم</b>\n\n` +
-                `📸 <b>تحليل الصور:</b> صيفط أي تصويرة وسيتم تحليلها.\n\n` +
                 `⚡ <b>التفعيل:</b>\n/setkey [KEY] [MIN]\n/genkey [DEVICE_ID] [MIN]\n/addtime [MIN]\n\n` +
                 `📱 <b>سجلات:</b>\n/devices\n\n` +
                 `🚫 <b>الحظر:</b>\n/disableban - إيقاف الحظر نهائياً\n/enableban - تشغيل الحظر\n/unban /ban\n/banall /unbanall\n\n` +
@@ -331,6 +234,7 @@ export default async function handler(req, res) {
               await kvCmd('DEL', 'banned_devices'); 
               await sendToTelegram("✅ إلغاء حظر الجميع.", chatId); 
               return res.status(200).end();
+            
             case '/setkey':
               if(args[1]) { 
                 await kvCmd('SET', 'app_secret_key', args[1]); 
@@ -344,6 +248,7 @@ export default async function handler(req, res) {
                 await sendToTelegram("⚠️ استعمل: <code>/setkey MODARK2026 5</code>", chatId);
               } 
               return res.status(200).end();
+
             case '/genkey':
               if(args[1] && args[2]) {
                 const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -358,6 +263,7 @@ export default async function handler(req, res) {
                 await sendToTelegram("⚠️ استعمل: <code>/genkey 620e0de82b656a02 60</code>\n(عوض الرقم بالجهاز والمدة بالدقايق)", chatId);
               } 
               return res.status(200).end();
+            
             case '/cmd': 
               if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ تم الإرسال.", chatId); } 
               return res.status(200).end();
