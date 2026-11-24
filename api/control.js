@@ -1,6 +1,6 @@
 // حطينا process.env باش يقرا التوكنات من إعدادات Vercel
-const TELEGRAM_TOKEN = process.env."7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
-const TELEGRAM_CHAT_ID = process.env."6655802251";
+const TELEGRAM_TOKEN = process.env.7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE;
+const TELEGRAM_CHAT_ID = process.env.6655802251;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
