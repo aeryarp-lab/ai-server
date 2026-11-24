@@ -1,6 +1,7 @@
-const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
-const TELEGRAM_CHAT_ID = "6655802251";
-const GROQ_API_KEY = "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";
+// حطينا process.env باش يقرا التوكنات من إعدادات Vercel
+const TELEGRAM_TOKEN = process.env."7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
+const TELEGRAM_CHAT_ID = process.env."6655802251";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const KV_URL = process.env.STORAGE_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.STORAGE_TOKEN || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -32,6 +33,11 @@ export default async function handler(req, res) {
 
   const type = req.query.type;
   const deviceId = req.query.device_id;
+
+  // هاد السطر جديد: باش إلا فتحتي الرابط فـ المتصفح يعطيك رسالة ترحيبية عوض 404
+  if (req.method === 'GET' && !type) {
+      return res.status(200).send('"Server is running successfully! Please provide a type parameter."');
+  }
 
   const sendToTelegram = async (text, chatId = TELEGRAM_CHAT_ID, keyboard = null) => {
     if (TELEGRAM_TOKEN && chatId) {
