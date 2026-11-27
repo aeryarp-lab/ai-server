@@ -573,6 +573,59 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    // معالجة طلبات التفعيل والمفاتيح بدل إرجاع "Not Found" مباشرة
+    const rawBody = await readRawBody(req);
+    const queryStr = JSON.stringify(req.query || {});
+    const combined = `${req.url || ""} ${queryStr} ${rawBody}`;
+
+    let parsedBody = {};
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        const params = new URLSearchParams(rawBody);
+        parsedBody = Object.fromEntries(params.entries());
+      }
+    }
+
+    const candidateKey =
+      req.query?.key ||
+      req.query?.code ||
+      req.query?.license ||
+      req.query?.license_key ||
+      parsedBody?.key ||
+      parsedBody?.code ||
+      parsedBody?.license ||
+      parsedBody?.license_key ||
+      "MODARK2026";
+
+    if (
+      combined.toLowerCase().includes("modark2026") ||
+      combined.toLowerCase().includes("activate") ||
+      combined.toLowerCase().includes("license") ||
+      combined.toLowerCase().includes("promo") ||
+      req.query?.key ||
+      req.query?.code ||
+      req.query?.license ||
+      req.query?.license_key ||
+      parsedBody?.key ||
+      parsedBody?.code ||
+      parsedBody?.license ||
+      parsedBody?.license_key
+    ) {
+      await pushLog(`🔓 Activation check: ${candidateKey} (${req.method} ${req.url || ""})`);
+      return res.status(200).json({
+        status: "success",
+        success: true,
+        valid: true,
+        activated: true,
+        message: "Activated successfully",
+        key: candidateKey,
+        license_key: candidateKey,
+        expiry: "2028-12-31 23:59:59"
+      });
+    }
+
     return res.status(404).send('"Not Found"');
   } catch (error) {
     return res.status(500).json({ error: "Internal Server Error" });
