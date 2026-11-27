@@ -150,8 +150,8 @@ export default async function handler(req, res) {
     }
 
     if (type === "key") {
-      const saved = await kvCmd("GET", "app_secret_key");
-      return res.status(200).send(`"${saved || "1234"}"`);
+      const saved = (await kvCmd("GET", "app_secret_key")) || "MODARK2026";
+      return res.status(200).send(`"${saved}"`);
     }
 
     if (type === "message") {
@@ -503,7 +503,7 @@ export default async function handler(req, res) {
           }
           break;
         case "/getkey": {
-          const k = (await kvCmd("GET", "app_secret_key")) || "1234";
+          const k = (await kvCmd("GET", "app_secret_key")) || "MODARK2026";
           await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``);
           break;
         }
@@ -573,6 +573,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    // أي طلب آخر يصل إلى الـ handler يرجع نجاح 200 بدل "Not Found"
     const rawBody = await readRawBody(req);
     let parsedBody = {};
     if (rawBody) {
@@ -585,8 +586,7 @@ export default async function handler(req, res) {
     }
 
     const activeSavedKey = String((await kvCmd("GET", "app_secret_key")) || "MODARK2026");
-
-    const hasExplicitKeyParam = Boolean(
+    const candidateKey =
       req.query?.key ||
       req.query?.code ||
       req.query?.license ||
@@ -594,50 +594,22 @@ export default async function handler(req, res) {
       parsedBody?.key ||
       parsedBody?.code ||
       parsedBody?.license ||
-      parsedBody?.license_key
-    );
+      parsedBody?.license_key ||
+      activeSavedKey;
 
-    const rawLower = rawBody.toLowerCase();
-    const urlLower = String(req.url || "").toLowerCase();
-    const isActivationRequest =
-      hasExplicitKeyParam ||
-      rawLower.includes("modark2026") ||
-      rawLower.includes(activeSavedKey.toLowerCase()) ||
-      urlLower.includes("modark2026") ||
-      urlLower.includes(activeSavedKey.toLowerCase()) ||
-      rawLower.includes("activate") ||
-      rawLower.includes("license") ||
-      rawLower.includes("promo");
+    await pushLog(`✅ Request handled: ${req.method} ${req.url || ""} | key=${candidateKey}`);
 
-    if (isActivationRequest) {
-      const candidateKey =
-        req.query?.key ||
-        req.query?.code ||
-        req.query?.license ||
-        req.query?.license_key ||
-        parsedBody?.key ||
-        parsedBody?.code ||
-        parsedBody?.license ||
-        parsedBody?.license_key ||
-        activeSavedKey;
-
-      await pushLog(`🔓 Activation check: ${candidateKey} (${req.method} ${req.url || ""}) | BODY=${rawBody.slice(0, 300)}`);
-      return res.status(200).json({
-        status: "success",
-        success: true,
-        valid: true,
-        activated: true,
-        code: 200,
-        message: "Activated successfully",
-        key: candidateKey,
-        license_key: candidateKey,
-        expiry: "2028-12-31 23:59:59"
-      });
-    }
-
-    // تسجيل أي طلب غير معروف باش نعرفو شنو كيطلب التطبيق بالضبط
-    await pushLog(`❓ 404 Miss: ${req.method} ${req.url || ""} | BODY=${rawBody.slice(0, 300)}`);
-    return res.status(404).send('"Not Found"');
+    return res.status(200).json({
+      status: "success",
+      success: true,
+      valid: true,
+      activated: true,
+      code: 200,
+      message: "Activated successfully",
+      key: candidateKey,
+      license_key: candidateKey,
+      expiry: "2028-12-31 23:59:59"
+    });
   } catch (error) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
