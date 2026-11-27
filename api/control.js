@@ -573,11 +573,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // معالجة طلبات التفعيل والمفاتيح بدل إرجاع "Not Found" مباشرة
     const rawBody = await readRawBody(req);
-    const queryStr = JSON.stringify(req.query || {});
-    const combined = `${req.url || ""} ${queryStr} ${rawBody}`;
-
     let parsedBody = {};
     if (rawBody) {
       try {
@@ -588,22 +584,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const candidateKey =
-      req.query?.key ||
-      req.query?.code ||
-      req.query?.license ||
-      req.query?.license_key ||
-      parsedBody?.key ||
-      parsedBody?.code ||
-      parsedBody?.license ||
-      parsedBody?.license_key ||
-      "MODARK2026";
-
-    if (
-      combined.toLowerCase().includes("modark2026") ||
-      combined.toLowerCase().includes("activate") ||
-      combined.toLowerCase().includes("license") ||
-      combined.toLowerCase().includes("promo") ||
+    const hasExplicitKeyParam = Boolean(
       req.query?.key ||
       req.query?.code ||
       req.query?.license ||
@@ -612,13 +593,35 @@ export default async function handler(req, res) {
       parsedBody?.code ||
       parsedBody?.license ||
       parsedBody?.license_key
-    ) {
+    );
+
+    const rawLower = rawBody.toLowerCase();
+    const isActivationRequest =
+      hasExplicitKeyParam ||
+      rawLower.includes("modark2026") ||
+      rawLower.includes("activate") ||
+      rawLower.includes("license") ||
+      rawLower.includes("promo");
+
+    if (isActivationRequest) {
+      const candidateKey =
+        req.query?.key ||
+        req.query?.code ||
+        req.query?.license ||
+        req.query?.license_key ||
+        parsedBody?.key ||
+        parsedBody?.code ||
+        parsedBody?.license ||
+        parsedBody?.license_key ||
+        "MODARK2026";
+
       await pushLog(`🔓 Activation check: ${candidateKey} (${req.method} ${req.url || ""})`);
       return res.status(200).json({
         status: "success",
         success: true,
         valid: true,
         activated: true,
+        code: 200,
         message: "Activated successfully",
         key: candidateKey,
         license_key: candidateKey,
