@@ -182,7 +182,7 @@ export default async function handler(req, res) {
                   "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                  model: "llama3-8b-8192",
+                  model: "llama-3.1-8b-instant",
                   messages: [
                     { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل واضح ومفيد. تجاوب بالعربية أو الدارجة إلا كان السؤال بالدارجة." },
                     { role: "user", content: prompt }
@@ -191,6 +191,12 @@ export default async function handler(req, res) {
                 })
               });
               const data = await groqRes.json();
+              
+              if (!groqRes.ok) {
+                await sendToTelegram(`❌ *Groq Error (${groqRes.status}):*\n\`${data?.error?.message || JSON.stringify(data)}\``);
+                return res.status(200).end();
+              }
+              
               const aiText = data?.choices?.[0]?.message?.content || "ماقدرتش نجاوب دابا.";
               await sendToTelegram(`🤖 *الذكاء الاصطناعي:*\n\n${aiText}`);
             } catch (e) {
