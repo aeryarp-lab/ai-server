@@ -1,4 +1,4 @@
-const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE";
+const TELEGRAM_TOKEN = "7302812464:AAH2lCCDWK_rJV771ClkiEyv8epegkPtpoE"; // يفضل تحطهم ف Environment Variables ف Vercel
 const TELEGRAM_CHAT_ID = "6655802251";
 const GROQ_API_KEY = "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";
 
@@ -57,11 +57,12 @@ export default async function handler(req, res) {
   try {
     if (type === 'secret') {
       const saved = await kvCmd('GET', 'app_lock_status');
-      return res.status(200).send(`"${saved || 'lock'}"`);
+      return res.status(200).send(`"${saved || 'unlock'}"`); // رجعنا unlock باش التطبيق يفتح
     }
     if (type === 'key') {
       const saved = await kvCmd('GET', 'app_secret_key');
-      return res.status(200).send(`"${saved || '1234'}"`);
+      // 🔥 التعديل 1: هنا كنا 1234، دابا رجعنا MODARK2026 باش يتقبل
+      return res.status(200).send(`"${saved || 'MODARK2026'}"`); 
     }
     if (type === 'message') return res.status(200).send(`"التطبيق مقفول من طرف الإدارة."`);
 
@@ -251,7 +252,7 @@ export default async function handler(req, res) {
         case '/lock': await kvCmd('SET', 'app_lock_status', 'lock'); await sendToTelegram("🔒 `[LOCK]` *Target locked.*"); break;
         case '/unlock': await kvCmd('SET', 'app_lock_status', 'unlock'); await sendToTelegram("🔓 `[UNLOCK]` *Target unlocked.*"); break;
         case '/setkey': if(args[1]) { await kvCmd('SET', 'app_secret_key', args[1]); await sendToTelegram(`✅ \`[KEY]\` *New key:* \`${args[1]}\``); } break;
-        case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "1234"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
+        case '/getkey': const k = (await kvCmd('GET', 'app_secret_key')) || "MODARK2026"; await sendToTelegram(`🔑 \`[KEY]\` *Current:* \`${k}\``); break;
         
         case '/ban': if(args[1]) { await kvCmd('SADD', 'banned_devices', args[1]); await sendToTelegram(`⛔ \`[BAN]\` *Device:* \`${args[1]}\``); } break;
         case '/unban': if(args[1]) { await kvCmd('SREM', 'banned_devices', args[1]); await sendToTelegram(`✅ \`[UNBAN]\` *Device:* \`${args[1]}\``); } break;
@@ -275,7 +276,10 @@ export default async function handler(req, res) {
       }
       return res.status(200).end();
     }
-    return res.status(404).send('"Not Found"');
+
+    // 🔥 التعديل 2: هنا كان كيرجع "Not Found"، دابا رجعنا "success" باش التطبيق يقبل الدخول
+    return res.status(200).json({ status: "success", success: true, message: "Activated" });
+    
   } catch (error) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
