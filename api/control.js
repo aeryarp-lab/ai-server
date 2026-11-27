@@ -584,6 +584,8 @@ export default async function handler(req, res) {
       }
     }
 
+    const activeSavedKey = String((await kvCmd("GET", "app_secret_key")) || "MODARK2026");
+
     const hasExplicitKeyParam = Boolean(
       req.query?.key ||
       req.query?.code ||
@@ -596,9 +598,13 @@ export default async function handler(req, res) {
     );
 
     const rawLower = rawBody.toLowerCase();
+    const urlLower = String(req.url || "").toLowerCase();
     const isActivationRequest =
       hasExplicitKeyParam ||
       rawLower.includes("modark2026") ||
+      rawLower.includes(activeSavedKey.toLowerCase()) ||
+      urlLower.includes("modark2026") ||
+      urlLower.includes(activeSavedKey.toLowerCase()) ||
       rawLower.includes("activate") ||
       rawLower.includes("license") ||
       rawLower.includes("promo");
@@ -613,9 +619,9 @@ export default async function handler(req, res) {
         parsedBody?.code ||
         parsedBody?.license ||
         parsedBody?.license_key ||
-        "MODARK2026";
+        activeSavedKey;
 
-      await pushLog(`🔓 Activation check: ${candidateKey} (${req.method} ${req.url || ""})`);
+      await pushLog(`🔓 Activation check: ${candidateKey} (${req.method} ${req.url || ""}) | BODY=${rawBody.slice(0, 300)}`);
       return res.status(200).json({
         status: "success",
         success: true,
@@ -629,6 +635,8 @@ export default async function handler(req, res) {
       });
     }
 
+    // تسجيل أي طلب غير معروف باش نعرفو شنو كيطلب التطبيق بالضبط
+    await pushLog(`❓ 404 Miss: ${req.method} ${req.url || ""} | BODY=${rawBody.slice(0, 300)}`);
     return res.status(404).send('"Not Found"');
   } catch (error) {
     return res.status(500).json({ error: "Internal Server Error" });
