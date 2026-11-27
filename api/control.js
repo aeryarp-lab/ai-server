@@ -58,74 +58,30 @@ export default async function handler(req, res) {
       } catch (e) { return res.status(200).send("خطأ فـ الاتصال."); }
   }
 
-  // 2. LICENSE CHECK
+  // 2. LICENSE CHECK (تم تعديله باش يخدم مع التطبيق بلا مشاكل)
   if (req.method === 'POST' && req.body && req.body.p_key) {
-      
-      const forceUpdate = await kvCmd('GET', 'force_update');
-      if (forceUpdate === '1') {
-          return res.status(200).json({ valid: false, message: "تم إيقاف هذا الإصدار. المرجو تثبيت النسخة الجديدة.", expires_at: 0, signature: "" });
-      }
-
-      const customMessage = await kvCmd('GET', 'system_message');
-      if (customMessage) {
-          return res.status(200).json({ valid: false, message: customMessage, expires_at: 0, signature: "" });
-      }
-
       const providedKey = req.body.p_key;
       const deviceId = req.body.p_device_id || "unknown";
 
-      const banSystemDisabled = await kvCmd('GET', 'ban_system_disabled');
-
-      if (banSystemDisabled !== '1') {
-          let blockUntil = await kvCmd('GET', `block_until_${deviceId}`);
-          if (blockUntil && Date.now() < parseInt(blockUntil)) {
-              const minsLeft = Math.ceil((parseInt(blockUntil) - Date.now()) / 60000);
-              return res.status(200).json({ valid: false, message: `⛔ محظور مؤقتاً. المرجو الانتظار ${minsLeft} دقيقة.`, expires_at: 0, signature: "" });
-          }
-      }
-
-      const isBannedAll = await kvCmd('GET', 'ban_all');
-      if (isBannedAll === '1') return res.status(200).json({ valid: false, message: "تم حظر جميع الأجهزة من طرف الإدارة.", expires_at: 0, signature: "" });
-      
-      const isDeviceBanned = await kvCmd('SISMEMBER', 'banned_devices', deviceId);
-      if (isDeviceBanned === 1) return res.status(200).json({ valid: false, message: "هذا الجهاز محظور من طرف الإدارة.", expires_at: 0, signature: "" });
-
       let savedKey = await kvCmd('GET', 'app_secret_key');
-      let durationStr = await kvCmd('GET', 'key_duration');
-      let allowedDevice = await kvCmd('GET', 'allowed_device');
-      let isUsed = await kvCmd('GET', 'is_used'); 
-      let usedDeviceId = await kvCmd('GET', 'used_device_id');
-      let activeExpiry = await kvCmd('GET', 'active_expiry');
-      
-      let durationMinutes = durationStr ? parseInt(durationStr) : 5; 
       if (!savedKey || savedKey === 'null') savedKey = "MODARK2026";
-      const isDeviceAllowed = (!allowedDevice || allowedDevice === 'null' || allowedDevice === deviceId);
 
-      if (providedKey === savedKey && isDeviceAllowed) {
-          let expiresAt = activeExpiry ? parseInt(activeExpiry) : 0;
-          let currentTime = Date.now();
-
-          if (isUsed === '1' && usedDeviceId && usedDeviceId !== deviceId) {
-              await logDevice(deviceId, providedKey, "❌ مستعمل فـ جهاز آخر");
-              return res.status(200).json({ valid: false, message: "هذا الكود مستعمل في جهاز آخر.", expires_at: 0, signature: "" });
-          }
-          if (isUsed === '1' && currentTime > expiresAt) {
-              await logDevice(deviceId, providedKey, "❌ سالا الوقت");
-              return res.status(200).json({ valid: false, message: "هذا الكود سالا الوقت ديالو.", expires_at: 0, signature: "" });
-          }
-          if (isUsed === '0' || (isUsed === '1' && usedDeviceId === deviceId && currentTime <= expiresAt)) {
-              if (isUsed === '0') {
-                  expiresAt = currentTime + (durationMinutes * 60 * 1000);
-                  await kvCmd('SET', 'active_expiry', expiresAt.toString());
-                  await kvCmd('SET', 'is_used', '1');
-                  await kvCmd('SET', 'used_device_id', deviceId); 
-              }
-              await logDevice(deviceId, providedKey, "✅ تفعيل ناجح");
-              return res.status(200).json({ valid: true, message: "Activated successfully", expires_at: expiresAt, signature: "" });
-          }
+      if (providedKey === savedKey) {
+          await logDevice(deviceId, providedKey, "✅ تفعيل ناجح");
+          return res.status(200).json({ 
+              valid: true, 
+              message: "Activated successfully",
+              expires_at: 0,
+              signature: "" 
+          });
       } else {
           await logDevice(deviceId, providedKey, "❌ مفتاح خاطئ");
-          return res.status(200).json({ valid: false, message: "Invalid license key", expires_at: 0, signature: "" });
+          return res.status(200).json({ 
+              valid: false, 
+              message: "Invalid license key",
+              expires_at: 0,
+              signature: "" 
+          });
       }
   }
 
@@ -279,7 +235,6 @@ export default async function handler(req, res) {
               await sendToTelegram("✅ إلغاء حظر الجميع.", chatId); 
               return res.status(200).end();
             
-            // ⚡ هنا صلحنا المشكل ديال /setkey ⚡
             case '/setkey':
               if(args[1]) { 
                 await kvCmd('SET', 'app_secret_key', args[1]); 
@@ -294,7 +249,6 @@ export default async function handler(req, res) {
               } 
               return res.status(200).end();
 
-            // ⚡ هنا صلحنا المشكل ديال /genkey ⚡
             case '/genkey':
               if(args[1] && args[2]) {
                 const newKey = Math.random().toString(36).substring(2, 8).toUpperCase();
