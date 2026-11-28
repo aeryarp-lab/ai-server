@@ -1,4 +1,4 @@
-const TELEGRAM_TOKEN = "7302812464:AAGL2r_AXYo-i3zX4fG6658eKMdbnJLmugI"; // يفضل تحطهم ف Environment Variables ف Vercel
+const TELEGRAM_TOKEN = "9108653103:AAFgJ4TeNS5vIq980-D-kuaLQ2C1FAMJbP4"; // يفضل تحطهم ف Environment Variables ف Vercel
 const TELEGRAM_CHAT_ID = "6655802251";
 const GROQ_API_KEY = "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";
 
