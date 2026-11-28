@@ -1,7 +1,7 @@
 // language: JavaScript, file: api/control.js, runtime: Node.js (Vercel Serverless)
 // *Vercel treats this as a Serverless Function, routing is handled automatically*
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "7394234303:AAF3d9yEJt26DpbNC1q-xBZwcfNX0uh2Duo";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "9108653103:AAFgJ4TeNS5vIq980-D-kuaLQ2C1FAMJbP4";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "6655802251";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "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";
 
